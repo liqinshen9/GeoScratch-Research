@@ -33,6 +33,7 @@ export default function BlocksCanvas({
   onObjectsChange,
   workspaceMaximized,
   preserveColumns = false,
+  hiddenBlockTypes,
   onRegisterClear,
   reusableBlockTemplate,
 }) {
@@ -291,6 +292,7 @@ export default function BlocksCanvas({
             <aside className="blocks-col blocks-col--palette blocks-col--palette-flyout">
               <BlockPalette
                 categoryId={categoryId}
+                hiddenBlockTypes={hiddenBlockTypes}
                 onBlockSelect={handleBlockSelect}
                 onBlockDragStart={() => setPaletteOpen(true)}
                 onMakeBlock={handleMakeBlock}

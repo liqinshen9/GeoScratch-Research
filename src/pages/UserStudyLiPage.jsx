@@ -11,6 +11,7 @@ const POINT_STYLES = {
 const LABEL_COLORS = Object.fromEntries(
   Object.values(POINT_STYLES).map(({ label, color }) => [label, color]),
 )
+const HIDDEN_BLOCK_TYPES = ['geo_object_with_point']
 
 const SETTINGS = Object.freeze({
   showAxisToggleButton: false,
@@ -59,6 +60,7 @@ export default function UserStudyLiPage() {
             settingsOverrides={SETTINGS}
             showAnswerHighlight={false}
             hideAnimationTransport
+            hiddenBlockTypes={HIDDEN_BLOCK_TYPES}
             transformObjects={styleStudyPoints}
             toggleLabelsOnLeftClick
           />

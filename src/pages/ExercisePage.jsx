@@ -88,6 +88,7 @@ export default function ExercisePage({
   settingsOverrides,
   showAnswerHighlight = true,
   hideAnimationTransport = false,
+  hiddenBlockTypes,
   transformObjects,
   toggleLabelsOnLeftClick = false,
 }) {
@@ -377,6 +378,7 @@ export default function ExercisePage({
             id={workspaceId ?? `exercise-${activeExercise}`}
             workspaceMaximized={workspaceMaximized}
             preserveColumns
+            hiddenBlockTypes={hiddenBlockTypes}
             reusableBlockTemplate={
               exercise.getReusableBlockTemplate?.({ workspace, result }) ??
               (result.passed ? exercise.reusableBlockTemplate : null)

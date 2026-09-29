@@ -317,6 +317,7 @@ function MyBoxPalette({ onMakeBlock, onUserBlockSelect, onUserBlockDelete, onUse
 
 export default function BlockPalette({
   categoryId,
+  hiddenBlockTypes = [],
   onBlockSelect,
   onBlockDragStart,
   onMakeBlock,
@@ -326,6 +327,7 @@ export default function BlockPalette({
 }) {
   const category = getCategory(categoryId)
   if (!category) return null
+  const hiddenTypes = new Set(hiddenBlockTypes)
 
   if (categoryId === 'mybox') {
     return (
@@ -341,19 +343,24 @@ export default function BlockPalette({
   return (
     <div className="block-palette">
       <div className="block-palette-scroll">
-        {category.groups.map((group) => (
-          <section key={group.label} className="palette-group">
-            <h3 className="palette-group-label">{group.label}</h3>
-            {group.blocks.map(({ type }) => (
-              <BlockPreview
-                key={type}
-                type={type}
-                onSelect={onBlockSelect}
-                onDragStartBlock={onBlockDragStart}
-              />
-            ))}
-          </section>
-        ))}
+        {category.groups.map((group) => {
+          const blocks = group.blocks.filter(({ type }) => !hiddenTypes.has(type))
+          if (!blocks.length) return null
+
+          return (
+            <section key={group.label} className="palette-group">
+              <h3 className="palette-group-label">{group.label}</h3>
+              {blocks.map(({ type }) => (
+                <BlockPreview
+                  key={type}
+                  type={type}
+                  onSelect={onBlockSelect}
+                  onDragStartBlock={onBlockDragStart}
+                />
+              ))}
+            </section>
+          )
+        })}
       </div>
 
       <p className="block-palette-hint">Click a block or drag it into the workspace</p>
