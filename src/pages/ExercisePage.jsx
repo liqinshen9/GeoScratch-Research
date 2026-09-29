@@ -89,6 +89,9 @@ export default function ExercisePage({
   showAnswerHighlight = true,
   hideAnimationTransport = false,
   hiddenBlockTypes,
+  trackingEnabled = true,
+  workspaceCloudSyncEnabled = true,
+  showDebugSolution = true,
   transformObjects,
   toggleLabelsOnLeftClick = false,
 }) {
@@ -153,7 +156,7 @@ export default function ExercisePage({
     !standalone && currentTask?.exerciseId === activeExercise ? currentTask : null
   const hideAnimation = Boolean(studyTask) && studyTask.mode !== RENDER_MODES.ANIMATED
 
-  const tracking = useExerciseTracking(activeExercise, exercise.kind)
+  const tracking = useExerciseTracking(activeExercise, exercise.kind, trackingEnabled)
   useEffect(() => {
     tracking.reportResult(result)
   })
@@ -359,7 +362,7 @@ export default function ExercisePage({
             )}
             {/* Dev only: import.meta.env.DEV is false in the study build, so
                   the control is compiled out rather than merely hidden. */}
-            {import.meta.env?.DEV && exercise.solutionXml && (
+            {showDebugSolution && import.meta.env?.DEV && exercise.solutionXml && (
               <button
                 type="button"
                 className="exercise-debug-fill"
@@ -379,6 +382,7 @@ export default function ExercisePage({
             workspaceMaximized={workspaceMaximized}
             preserveColumns
             hiddenBlockTypes={hiddenBlockTypes}
+            workspaceCloudSyncEnabled={workspaceCloudSyncEnabled}
             reusableBlockTemplate={
               exercise.getReusableBlockTemplate?.({ workspace, result }) ??
               (result.passed ? exercise.reusableBlockTemplate : null)

@@ -1,7 +1,4 @@
-import { useEffect } from 'react'
-import ParticipantGate from '@/components/ParticipantGate/ParticipantGate'
 import useThemeSync from '@/hooks/useThemeSync'
-import useAuthStore from '@/store/useAuthStore'
 import ExercisePage from '@/pages/ExercisePage'
 
 const POINT_STYLES = {
@@ -45,27 +42,24 @@ function styleStudyPoints(objects) {
 export default function UserStudyLiPage() {
   useThemeSync()
 
-  useEffect(() => {
-    useAuthStore.getState().bootstrap()
-  }, [])
-
   return (
-    <ParticipantGate>
-      <div className="app-container flex h-dvh flex-col overflow-hidden">
-        <main className="flex min-h-0 flex-1 flex-col">
-          <ExercisePage
-            exerciseId="cube-point-pivot-rotation"
-            standalone
-            workspaceId="userstudy-Li-cube-point-pivot-rotation"
-            settingsOverrides={SETTINGS}
-            showAnswerHighlight={false}
-            hideAnimationTransport
-            hiddenBlockTypes={HIDDEN_BLOCK_TYPES}
-            transformObjects={styleStudyPoints}
-            toggleLabelsOnLeftClick
-          />
-        </main>
-      </div>
-    </ParticipantGate>
+    <div className="app-container flex h-dvh flex-col overflow-hidden">
+      <main className="flex min-h-0 flex-1 flex-col">
+        <ExercisePage
+          exerciseId="cube-point-pivot-rotation"
+          standalone
+          workspaceId="userstudy-Li-cube-point-pivot-rotation"
+          settingsOverrides={SETTINGS}
+          showAnswerHighlight={false}
+          hideAnimationTransport
+          hiddenBlockTypes={HIDDEN_BLOCK_TYPES}
+          trackingEnabled={false}
+          workspaceCloudSyncEnabled={false}
+          showDebugSolution={false}
+          transformObjects={styleStudyPoints}
+          toggleLabelsOnLeftClick
+        />
+      </main>
+    </div>
   )
 }

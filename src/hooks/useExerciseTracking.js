@@ -16,9 +16,10 @@ function newOpenId() {
  *
  * @param {number} exerciseNumber
  * @param {string} [exerciseKind]  the module's `kind`
+ * @param {boolean} [enabled=true]
  * @returns {{ reportResult: (result) => void, recordMcqAnswer: (answer, correctId) => void }}
  */
-export function useExerciseTracking(exerciseNumber, exerciseKind) {
+export function useExerciseTracking(exerciseNumber, exerciseKind, enabled = true) {
   const authStatus = useAuthStore((s) => s.status)
   const startAttempt = useTrackingStore((s) => s.startAttempt)
   const completeAttempt = useTrackingStore((s) => s.completeAttempt)
@@ -38,7 +39,7 @@ export function useExerciseTracking(exerciseNumber, exerciseKind) {
 
   useEffect(() => {
     wasPassed.current = false
-    if (!authSettled) return // wait for sign-in; a new openId fires this again
+    if (!enabled || !authSettled) return // wait for sign-in; a new openId fires this again
     startAttempt({ openId, exerciseNumber, exerciseKind })
 
     const onHide = () => {
@@ -52,25 +53,27 @@ export function useExerciseTracking(exerciseNumber, exerciseKind) {
       window.removeEventListener('pagehide', onHide)
       if (!wasPassed.current) saveProgress(resultRef.current)
     }
-  }, [openId, authSettled, exerciseNumber, exerciseKind, startAttempt, saveProgress])
+  }, [openId, enabled, authSettled, exerciseNumber, exerciseKind, startAttempt, saveProgress])
 
   const reportResult = useCallback(
     (result) => {
+      if (!enabled) return
       resultRef.current = result
       if (result?.passed && !wasPassed.current) {
         wasPassed.current = true
         completeAttempt(result)
       }
     },
-    [completeAttempt],
+    [enabled, completeAttempt],
   )
 
   const recordMcqAnswer = useCallback(
     (answer, correctId) => {
+      if (!enabled) return
       if (answer && answer === correctId) wasPassed.current = true
       recordMcq({ answer, correctId })
     },
-    [recordMcq],
+    [enabled, recordMcq],
   )
 
   return { reportResult, recordMcqAnswer }

@@ -24,8 +24,9 @@ const CLOUD_PUSH_DELAY_MS = 3000
  * @param {object|null} workspace  Blockly workspace, once injected.
  * @param {string} id             Storage key for this workspace.
  * @param {(ws: object) => void} syncScene  Re-runs generation after a restore.
+ * @param {boolean} [cloudSyncEnabled=true] Whether to read/write cloud snapshots.
  */
-export function useWorkspaceAutosave(workspace, id, syncScene) {
+export function useWorkspaceAutosave(workspace, id, syncScene, cloudSyncEnabled = true) {
   const isFirstLoad = useRef(true)
   const pushTimer = useRef(null)
   const saveWorkspaceXml = useWorkspaceStore((state) => state.saveWorkspaceXml)
@@ -39,14 +40,18 @@ export function useWorkspaceAutosave(workspace, id, syncScene) {
 
     // Hold the first-load restore until auth has settled, so a cloud snapshot
     // (if any) can win. 'offline' / 'error' proceed with local only.
-    const authSettled = authStatus === 'ready' || authStatus === 'offline' || authStatus === 'error'
+    const authSettled =
+      !cloudSyncEnabled ||
+      authStatus === 'ready' ||
+      authStatus === 'offline' ||
+      authStatus === 'error'
 
     let cancelled = false
 
     const loadInitial = async () => {
       const localXml = useWorkspaceStore.getState().savedXml[id]
       let cloud = null
-      if (shouldSync(authStatus)) {
+      if (cloudSyncEnabled && shouldSync(authStatus)) {
         cloud = await fetchSnapshot(id)
         if (cancelled) return
       }
@@ -85,7 +90,7 @@ export function useWorkspaceAutosave(workspace, id, syncScene) {
       const text = Blockly.Xml.domToText(dom)
       saveWorkspaceXml(id, text)
 
-      if (shouldSync(useAuthStore.getState().status)) {
+      if (cloudSyncEnabled && shouldSync(useAuthStore.getState().status)) {
         clearTimeout(pushTimer.current)
         pushTimer.current = setTimeout(() => {
           pushSnapshot({
@@ -103,7 +108,7 @@ export function useWorkspaceAutosave(workspace, id, syncScene) {
       clearTimeout(pushTimer.current)
       teardown?.()
     }
-  }, [workspace, id, saveWorkspaceXml, syncScene, authStatus])
+  }, [workspace, id, saveWorkspaceXml, syncScene, authStatus, cloudSyncEnabled])
 }
 
 /** 'exercise-3' -> 3; anything else -> null. */

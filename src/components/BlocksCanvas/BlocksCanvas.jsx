@@ -34,6 +34,7 @@ export default function BlocksCanvas({
   workspaceMaximized,
   preserveColumns = false,
   hiddenBlockTypes,
+  workspaceCloudSyncEnabled = true,
   onRegisterClear,
   reusableBlockTemplate,
 }) {
@@ -77,7 +78,7 @@ export default function BlocksCanvas({
     onConnectionFeedback: showConnectionFeedback,
   })
 
-  useWorkspaceAutosave(workspace, id, syncScene)
+  useWorkspaceAutosave(workspace, id, syncScene, workspaceCloudSyncEnabled)
 
   const {
     trashTargetRef,
