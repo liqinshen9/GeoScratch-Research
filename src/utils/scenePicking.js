@@ -40,6 +40,15 @@ export function findLabelOwner(object, getLabelsForObject) {
   return null
 }
 
+export function findLinkedLabelOwner(object) {
+  let target = object
+  while (target) {
+    if (target.userData?.clickLabelOwner) return target.userData.clickLabelOwner
+    target = target.parent
+  }
+  return null
+}
+
 // Nearest ancestor (inclusive) tagged with a Blockly source-block id. Stops
 // naturally at the <group key={i}> wrapper Scene renders, which has none.
 export function resolveSrcBlockId(object) {

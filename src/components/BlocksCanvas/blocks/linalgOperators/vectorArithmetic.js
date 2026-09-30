@@ -196,6 +196,10 @@ export function initVectorArithmeticBlock() {
     );
     const pointLabel = vVal.userData?.label || 'Q';
     const pointDifferenceLabel = vectorNotation.binaryLabel(uVal, '-', vVal, 'P', pointLabel);
+    const pointDifferenceDisplayLabel =
+      window.__geoScratchRuntimeMode === 'userstudy-Li-point-plane-distance'
+        ? 'P-' + pointLabel.split(' ').join('')
+        : pointDifferenceLabel;
     // Name the result by its expression ("a + b"), never a generic "result" --
     // Scale Vector labels its result "3\u00b7a", and the two should read alike.
     const genericResultLabel = vectorNotation.binaryLabel(
@@ -278,9 +282,13 @@ export function initVectorArithmeticBlock() {
       ? [{ anchor:'negTip', name: '\u2212' + vLabel, value: fmt(vVal.clone().negate()), distanceFactor:8, offset:[0.12,0.12,0], color: operandBColor, revealed: () => negatedV.visible === true && !negatedV.userData.fadingOut }]
       : [];
     group.userData.labels = isPointDifference
-      ? [
-        { anchor:'rTip', name: pointDifferenceLabel, value: fmt(res), distanceFactor:8, offset:[0.12,0.12,0], color: resultColor, revealed: shownWith(resObj) },
-      ]
+      ? window.__geoScratchRuntimeMode === 'userstudy-Li-point-plane-distance'
+        ? [
+          { anchor:'rTip', text: pointDifferenceDisplayLabel, distanceFactor:8, offset:[0.12,0.12,0], color: resultColor, revealed: shownWith(resObj) },
+        ]
+        : [
+          { anchor:'rTip', name: pointDifferenceDisplayLabel, value: fmt(res), distanceFactor:8, offset:[0.12,0.12,0], color: resultColor, revealed: shownWith(resObj) },
+        ]
       : showOperandLabels
         ? [
         // An operand we left to its owner is already labelled by it.

@@ -47,6 +47,13 @@ function styleStudyPoints(objects) {
           if (label.anchor === 'q') label.className = 'label--study-coordinate'
         })
       }
+      if (child.userData?.geoType === 'exercise_point_p') {
+        child.userData?.labels?.forEach((label) => {
+          if (label.anchor !== 'p') return
+          label.name = 'P'
+          label.className = 'label--study-coordinate'
+        })
+      }
       if (style) {
         const materials = Array.isArray(child.material) ? child.material : [child.material]
         materials.forEach((material) => material?.color?.set(style.color))

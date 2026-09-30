@@ -94,11 +94,16 @@ describe('point-plane projection runtime', () => {
     const store = run('userstudy-Li-point-plane-distance')
     const projectionGroup = store[projection.id]
     const magnitudeGroup = store[magnitude.id]
+    const differenceGroup = store[difference.id]
 
     expect(magnitudeGroup.userData.distance).toBeGreaterThan(0)
+    expect(differenceGroup.userData.labels[0].text).toMatch(/^P-Q\d*$/)
+    expect(differenceGroup.userData.labels[0].value).toBeUndefined()
     const perpendicularGuide = projectionGroup.children.find(
       (child) => child.material?.isLineDashedMaterial,
     )
+    const displayedNormalOrigin = new THREE.Vector3(7.035, -10.454, 10.872)
+    projectionGroup.userData.setDistanceConstructionNormalOrigin(displayedNormalOrigin)
     projectionGroup.userData.setDistanceConstructionPhase('projection')
     projectionGroup.userData.setDistanceConstructionProgress(0)
     const guidePositions = perpendicularGuide.geometry.attributes.position
@@ -109,9 +114,38 @@ describe('point-plane projection runtime', () => {
     const distanceSegment = projectionGroup.children.find(
       (child) => child.userData?.geoType === 'distance_segment',
     )
+    const distanceGlow = projectionGroup.children.find(
+      (child) => child.userData?.geoType === 'distance_glow',
+    )
+    expect(distanceSegment.userData.clickLabelOwner).toBe(magnitudeGroup)
+    expect(distanceGlow.userData.clickLabelOwner).toBe(magnitudeGroup)
     expect(distanceSegment.visible).toBe(false)
     projectionGroup.userData.setDistanceConstructionProgress(0.8)
     expect(distanceSegment.visible).toBe(true)
+    const projectedGuidePositions = perpendicularGuide.geometry.attributes.position
+    const pointP = new THREE.Vector3().fromBufferAttribute(projectedGuidePositions, 0)
+    const pointOnNormal = new THREE.Vector3().fromBufferAttribute(projectedGuidePositions, 1)
+    const planeNormal = new THREE.Vector3(0.5, 1, 0.5).normalize()
+    expect(
+      pointOnNormal.clone().sub(displayedNormalOrigin).cross(planeNormal).length(),
+    ).toBeCloseTo(0, 6)
+    expect(pointP.clone().sub(pointOnNormal).dot(planeNormal)).toBeCloseTo(0, 6)
+    const qBasedDistancePosition = distanceSegment.position.clone()
+    projectionGroup.userData.setDistanceConstructionPhase('distance')
+    projectionGroup.userData.setDistanceFinalProgress(1)
+    expect(distanceSegment.position.toArray()).toEqual(qBasedDistancePosition.toArray())
+    projectionGroup.userData.setDistanceFinalBlink(0)
+    expect(perpendicularGuide.material.opacity).toBeCloseTo(0.95)
+    expect(distanceSegment.material.opacity).toBeCloseTo(0.96)
+    expect(distanceGlow.visible).toBe(true)
+    const brightGlowOpacity = distanceGlow.material.opacity
+    projectionGroup.userData.setDistanceFinalBlink(0.1)
+    expect(distanceGlow.material.opacity).toBeLessThan(brightGlowOpacity)
+    const finalGuidePositions = perpendicularGuide.geometry.attributes.position
+    const finalGuideStart = new THREE.Vector3().fromBufferAttribute(finalGuidePositions, 0)
+    const finalGuideEnd = new THREE.Vector3().fromBufferAttribute(finalGuidePositions, 1)
+    const finalGuideDirection = finalGuideEnd.sub(finalGuideStart).normalize()
+    expect(finalGuideDirection.dot(planeNormal)).toBeCloseTo(0, 6)
   })
 })
 

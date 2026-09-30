@@ -12,7 +12,13 @@ const sceneObject = (id, geoType = 'group') => {
 }
 
 describe('point-plane step animation', () => {
-  it('projects a copy onto n before revealing the distance label', () => {
+  const durationUnits = 9.7
+  const constructionStageUnits = 1.2
+  const atConstructionStage = (stage, localProgress) =>
+    (stage * constructionStageUnits + localProgress * constructionStageUnits) / durationUnits
+  const atFinalGlowUnit = (unit) => (6 * constructionStageUnits + unit) / durationUnits
+
+  it('keeps the P-to-normal perpendicular fixed while blinking d on the normal', () => {
     const blocks = {
       plane: block('plane'),
       pointP: block('point-p'),
@@ -22,9 +28,24 @@ describe('point-plane step animation', () => {
       projection: block('projection'),
       magnitude: block('magnitude'),
     }
+    const planePointInput = block('plane-point-input')
+    const planeNormalInput = block('plane-normal-input')
+    const projectionNormalInput = block('projection-normal-input')
+    const magnitudeNestedInput = block('magnitude-nested-input')
+    blocks.plane.inputList = [
+      { connection: { targetBlock: () => planePointInput } },
+      { connection: { targetBlock: () => planeNormalInput } },
+    ]
+    blocks.projection.getInputTargetBlock = (name) => (name === 'V' ? projectionNormalInput : null)
+    blocks.magnitude.inputList = [{ connection: { targetBlock: () => magnitudeNestedInput } }]
     const plane = sceneObject('plane', 'point_normal_plane_group')
+    plane.userData.point = new THREE.Vector3(-5, 0, 2)
+    plane.userData.labels = [{ anchor: 'point', name: 'Plane' }]
+    const planeDefinition = sceneObject(null, 'parametric_plane_point_normal_group')
     const planePoint = sceneObject(null, 'parametric_plane_point_marker')
-    plane.add(planePoint)
+    const planeNormal = sceneObject(null, 'parametric_plane_normal_arrow')
+    planeDefinition.add(planePoint, planeNormal)
+    plane.add(planeDefinition)
     const pointP = sceneObject('point-p', 'exercise_point_p')
     const pointQ = sceneObject('point-q', 'annotated_object')
     const qMarker = sceneObject(null, 'selectable_point_marker')
@@ -34,6 +55,7 @@ describe('point-plane step animation', () => {
     difference.userData.setVectorLength = vi.fn()
     const normal = sceneObject('normal-from-q', 'distance_normal_arrow')
     normal.userData.vectorLength = 12
+    normal.userData.vectorOrigin = new THREE.Vector3(2, 3, 4)
     normal.userData.setVectorLength = vi.fn()
     const projection = sceneObject('projection')
     const magnitude = sceneObject('magnitude')
@@ -42,34 +64,52 @@ describe('point-plane step animation', () => {
       projection.userData.distanceConstructionMidpoint = new THREE.Vector3(progress, 0, 0)
     })
     projection.userData.setDistanceConstructionPhase = vi.fn()
+    projection.userData.setDistanceFinalProgress = vi.fn((progress) => {
+      projection.userData.distanceConstructionMidpoint = new THREE.Vector3(progress, 0, 0)
+    })
+    projection.userData.setDistanceFinalBlink = vi.fn()
+    projection.userData.setDistanceConstructionNormalOrigin = vi.fn()
     const workspace = { highlightBlock: vi.fn() }
     const objects = [pointP, pointQ, difference, normal, projection, magnitude]
 
     const target = installPointPlaneStepAnimation({ objects, workspace, blocks })
     expect(target).toBe(projection)
+    expect(target.userData.animateSteps.durationScale).toBeCloseTo(durationUnits)
+    expect(projection.userData.setDistanceConstructionNormalOrigin).toHaveBeenCalledWith(
+      normal.userData.vectorOrigin,
+    )
 
     target.userData.animateSteps(0)
-    expect(workspace.highlightBlock).toHaveBeenLastCalledWith('plane')
+    expect(workspace.highlightBlock).toHaveBeenCalledWith('plane')
+    expect(workspace.highlightBlock).toHaveBeenCalledWith('plane-point-input', true)
+    expect(workspace.highlightBlock).toHaveBeenCalledWith('plane-normal-input', true)
     expect(pointP.visible).toBe(false)
     expect(qMarker.visible).toBe(false)
-    expect(planePoint.visible).toBe(true)
+    expect(planeDefinition.visible).toBe(true)
+    expect(plane.userData.labels[0].name).toBe('A')
+    expect(plane.userData.labels[0].value).toBe('(-5, 0, 2)')
+    expect(plane.userData.labels[0].revealed()).toBe(true)
 
-    target.userData.animateSteps(0.16)
+    target.userData.animateSteps(atConstructionStage(1, 0.2))
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith('point-p')
     expect(pointP.visible).toBe(true)
-    expect(planePoint.visible).toBe(false)
+    expect(planeDefinition.visible).toBe(true)
 
-    target.userData.animateSteps(0.31)
+    target.userData.animateSteps(atConstructionStage(2, 0.01))
+    expect(planeDefinition.visible).toBe(false)
+    expect(plane.userData.labels[0].revealed()).toBe(false)
+
+    target.userData.animateSteps(atConstructionStage(2, 0.2))
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith('point-q')
     expect(qMarker.visible).toBe(true)
 
-    target.userData.animateSteps(0.46)
+    target.userData.animateSteps(atConstructionStage(3, 0.22))
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith('normal-from-q')
     expect(normal.visible).toBe(true)
     expect(normal.userData.setVectorLength.mock.calls.at(-1)[0]).toBeCloseTo(12 * 0.22)
     expect(difference.visible).toBe(false)
 
-    target.userData.animateSteps(0.6)
+    target.userData.animateSteps(atConstructionStage(4, 0.2))
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith('difference')
     expect(normal.userData.setVectorLength).toHaveBeenLastCalledWith(12)
     expect(difference.visible).toBe(true)
@@ -77,24 +117,43 @@ describe('point-plane step animation', () => {
     expect(projection.userData.setDistanceConstructionProgress).toHaveBeenLastCalledWith(0)
     expect(projection.userData.setDistanceConstructionPhase).toHaveBeenLastCalledWith('normal')
 
-    target.userData.animateSteps(0.75)
+    target.userData.animateSteps(atConstructionStage(5, 0.25))
     expect(projection.userData.setDistanceConstructionPhase).toHaveBeenLastCalledWith('projection')
-    expect(projection.userData.setDistanceConstructionProgress).toHaveBeenLastCalledWith(0.25)
+    expect(projection.userData.setDistanceConstructionProgress.mock.calls.at(-1)[0]).toBeCloseTo(
+      0.25,
+    )
+    expect(projection.userData.setDistanceFinalProgress).toHaveBeenLastCalledWith(0)
     expect(difference.visible).toBe(true)
     expect(magnitude.visible).toBe(false)
+    expect(workspace.highlightBlock).toHaveBeenCalledWith('projection')
+    expect(workspace.highlightBlock).toHaveBeenCalledWith('difference', true)
+    expect(workspace.highlightBlock).toHaveBeenCalledWith('projection-normal-input', true)
 
-    target.userData.animateSteps(0.95, (value) => value)
+    workspace.highlightBlock.mockClear()
+    target.userData.animateSteps(atFinalGlowUnit(0.5))
     expect(projection.userData.setDistanceConstructionProgress).toHaveBeenLastCalledWith(1)
     expect(projection.userData.setDistanceConstructionPhase).toHaveBeenLastCalledWith('distance')
+    expect(projection.userData.setDistanceFinalProgress).toHaveBeenLastCalledWith(1)
+    expect(projection.userData.setDistanceFinalBlink.mock.calls.at(-1)[0]).toBeCloseTo(0.5 / 2.5)
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith('magnitude')
+    expect(workspace.highlightBlock).not.toHaveBeenCalledWith('magnitude-nested-input', true)
     expect(magnitude.visible).toBe(true)
+    expect(magnitude.userData.labels[0].revealed()).toBe(true)
+    expect(magnitude.userData.labelAnchors.distanceMid.position[0]).toBe(1)
+
+    target.userData.animateSteps(atFinalGlowUnit(2.25))
+    expect(projection.userData.setDistanceFinalProgress).toHaveBeenLastCalledWith(1)
+    expect(projection.userData.setDistanceFinalBlink.mock.calls.at(-1)[0]).toBeCloseTo(2.25 / 2.5)
+    expect(magnitude.userData.labels[0].revealed()).toBe(true)
     expect(magnitude.userData.labelAnchors.distanceMid.position[0]).toBe(1)
 
     target.userData.animateSteps(1)
     expect(projection.userData.setDistanceConstructionProgress).toHaveBeenLastCalledWith(1)
     expect(projection.userData.setDistanceConstructionPhase).toHaveBeenLastCalledWith('distance')
+    expect(projection.userData.setDistanceFinalProgress).toHaveBeenLastCalledWith(1)
+    expect(projection.userData.setDistanceFinalBlink).toHaveBeenLastCalledWith(1)
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith(null)
-    expect(planePoint.visible).toBe(false)
+    expect(planeDefinition.visible).toBe(false)
   })
 
   it('installs when the connected normal has no standalone scene object', () => {
@@ -116,6 +175,8 @@ describe('point-plane step animation', () => {
     const projection = sceneObject('projection')
     projection.userData.setDistanceConstructionProgress = vi.fn()
     projection.userData.setDistanceConstructionPhase = vi.fn()
+    projection.userData.setDistanceFinalProgress = vi.fn()
+    projection.userData.setDistanceFinalBlink = vi.fn()
     projection.userData.setDistanceNormalProgress = vi.fn()
     const magnitude = sceneObject('magnitude')
 
@@ -126,7 +187,7 @@ describe('point-plane step animation', () => {
     })
 
     expect(target).toBe(projection)
-    target.userData.animateSteps(0.46)
+    target.userData.animateSteps(atConstructionStage(3, 0.22))
     expect(projection.userData.setDistanceNormalProgress.mock.calls.at(-1)[0]).toBeCloseTo(0.22)
   })
 })

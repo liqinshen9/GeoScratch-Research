@@ -3,6 +3,7 @@ import { useThree } from '@react-three/fiber'
 import THREE from '@/utils/three'
 import {
   classifyGesture,
+  findLinkedLabelOwner,
   findLabelOwner,
   findSelectableLine,
   findSelectablePointMarker,
@@ -46,10 +47,23 @@ function ScenePicker({ onSelectBlock, onToggleLabels, toggleLabelsOnLeftClick = 
       const marker = hits.map((hit) => findClickLabelMarker(hit.object)).find(Boolean)
       const anchor = marker?.userData?.clickLabelAnchor
       const owner = marker && findLabelOwner(marker, getLabelsForObject)
-      if (!anchor || !owner) return
-      const index = getLabelsForObject(owner).findIndex((label) => label.anchor === anchor)
-      const keys = getLabelVisibilityKeysForObject(owner)
-      if (index >= 0) onToggleLabels([keys[index]])
+      if (anchor && owner) {
+        const index = getLabelsForObject(owner).findIndex((label) => label.anchor === anchor)
+        const keys = getLabelVisibilityKeysForObject(owner)
+        if (index >= 0) onToggleLabels([keys[index]])
+        return
+      }
+
+      const linkedOwner = hits.map((hit) => findLinkedLabelOwner(hit.object)).find(Boolean)
+      if (linkedOwner) {
+        onToggleLabels(getLabelVisibilityKeysForObject(linkedOwner))
+        return
+      }
+
+      const clickedOwner = hits
+        .map((hit) => findLabelOwner(hit.object, getLabelsForObject))
+        .find(Boolean)
+      if (clickedOwner) onToggleLabels(getLabelVisibilityKeysForObject(clickedOwner))
     }
 
     // Kept alive until the next pointerdown so contextmenu can consult it

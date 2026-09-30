@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   classifyGesture,
+  findLinkedLabelOwner,
   findLabelOwner,
   collectSelectionTargets,
   resolveSelectedBlockId,
@@ -88,6 +89,19 @@ describe('findLabelOwner', () => {
 
   it('returns null when no ancestor has labels', () => {
     expect(findLabelOwner(node({}), getLabels)).toBeNull()
+  })
+})
+
+describe('findLinkedLabelOwner', () => {
+  it('resolves a label owner explicitly linked from clicked geometry', () => {
+    const labelOwner = node({ labels: [{ text: 'd = 6.94' }] })
+    const distanceSegment = node({ clickLabelOwner: labelOwner })
+    const mesh = node({}, distanceSegment)
+    expect(findLinkedLabelOwner(mesh)).toBe(labelOwner)
+  })
+
+  it('returns null when the clicked geometry has no linked label', () => {
+    expect(findLinkedLabelOwner(node({}, node({})))).toBeNull()
   })
 })
 

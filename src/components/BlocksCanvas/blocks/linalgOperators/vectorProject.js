@@ -147,6 +147,7 @@ export function initVectorProjectBlock() {
     let distanceNormalGlyph = null;
     let distanceRightAngle = null;
     let constructionGuide = null;
+    let distanceGlow = null;
     let qPointForGuide = null;
     if (!isPointPlaneDistanceProjection) {
       const guideGeom = new THREE.BufferGeometry().setFromPoints([uTip, pTip]);
@@ -186,16 +187,35 @@ export function initVectorProjectBlock() {
         new THREE.BufferGeometry().setFromPoints([pointEnd, initialProjectionTip]),
         new THREE.LineDashedMaterial({
           color: window.GeoScratchColors.forRole('accent'),
-          dashSize: 0.14,
-          gapSize: 0.1,
+          dashSize: 0.28,
+          gapSize: 0.18,
           transparent: true,
-          opacity: 0.82,
+          opacity: 0.95,
         })
       );
       constructionGuide.computeLineDistances();
       constructionGuide.userData.geoType = 'geo_helper';
       constructionGuide.userData.srcBlockId = ${JSON.stringify(block.id)};
+      constructionGuide.material.depthTest = false;
+      constructionGuide.renderOrder = 20;
       constructionGuide.visible = false;
+
+      if (projObj.isMesh) {
+        distanceGlow = projObj.clone();
+        distanceGlow.material = new THREE.MeshBasicMaterial({
+          color: distanceColor,
+          transparent: true,
+          opacity: 0,
+          depthTest: false,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        distanceGlow.scale.set(1.7, 1, 1.7);
+        distanceGlow.renderOrder = 19;
+        distanceGlow.visible = false;
+        distanceGlow.userData.geoType = 'distance_glow';
+        distanceGlow.userData.srcBlockId = ${JSON.stringify(block.id)};
+      }
 
       // The plane nested in "Show any point on object" already contains its
       // own normal arrow. Once this diagram supplies the red normal, hide that
@@ -208,12 +228,8 @@ export function initVectorProjectBlock() {
 
     const group = new THREE.Group();
     if (isPointPlaneDistanceProjection) {
-      group.add(
-        projObj,
-        projectionShadow,
-        distanceIllustration,
-        constructionGuide
-      );
+      if (distanceGlow) group.add(distanceGlow);
+      group.add(projObj, projectionShadow, distanceIllustration, constructionGuide);
     } else {
       group.add(arrowU, arrowV, projObj, guideLine);
     }
@@ -254,10 +270,14 @@ export function initVectorProjectBlock() {
       const projectionDirection = projVec.lengthSq() > 1e-12
         ? projVec.clone().normalize()
         : normalLabelUnit.clone();
-      const projectionAtQ = qPointForGuide.clone().addScaledVector(projectionDirection, projLen);
+      let projectionAtQ = qPointForGuide.clone().addScaledVector(
+        normalLabelUnit,
+        pointEnd.clone().sub(qPointForGuide).dot(normalLabelUnit)
+      );
       const rightAngleSize = distanceIllustration?.userData?.rightAngleSize ?? 0.24;
       let constructionGuideProgress = 0;
       let constructionPhase = 'normal';
+      let glowActive = false;
       const setSegment = (segment, start, end, authoredLength = null) => {
         const delta = end.clone().sub(start);
         const length = delta.length();
@@ -272,7 +292,11 @@ export function initVectorProjectBlock() {
         const guideComplete = constructionGuideProgress >= 0.999;
         projObj.visible = showProjection && guideComplete;
         projectionShadow.visible = showProjection && guideComplete;
-        distanceRightAngle.visible = showProjection && guideComplete;
+        if (distanceGlow) distanceGlow.visible = showProjection && guideComplete && glowActive;
+        distanceRightAngle.visible =
+          constructionPhase === 'projection' || constructionPhase === 'distance'
+            ? guideComplete
+            : false;
         constructionGuide.visible = showProjection;
         if (distanceIllustration?.userData?.guideLine) {
           distanceIllustration.userData.guideLine.visible = false;
@@ -286,6 +310,7 @@ export function initVectorProjectBlock() {
         const translation = qPointForGuide.clone().sub(projOrigin);
 
         setSegment(projObj, qPointForGuide, projectionAtQ);
+        if (distanceGlow) setSegment(distanceGlow, qPointForGuide, projectionAtQ);
         distanceNormalGlyph?.position.copy(translation);
         projectionShadow?.position.copy(translation);
 
@@ -319,6 +344,69 @@ export function initVectorProjectBlock() {
         constructionPhase = phase;
         updateConstructionVisibility();
       };
+      group.userData.setDistanceConstructionNormalOrigin = (origin) => {
+        if (!origin?.isVector3) return;
+        qPointForGuide.copy(origin);
+        projectionAtQ = qPointForGuide.clone().addScaledVector(
+          normalLabelUnit,
+          pointEnd.clone().sub(qPointForGuide).dot(normalLabelUnit)
+        );
+        const translation = qPointForGuide.clone().sub(projOrigin);
+        distanceNormalGlyph?.position.copy(translation);
+        const movedNormalTip = finalNormalTip.clone().add(translation);
+        group.userData.labelAnchors.normal.position = movedNormalTip.toArray();
+        group.userData.setDistanceConstructionProgress(constructionGuideProgress);
+      };
+      group.userData.setDistanceFinalProgress = (progress) => {
+        // The final step keeps the projection construction exactly where it
+        // was: P remains joined perpendicularly to n, and d stays on n.
+        setSegment(projObj, qPointForGuide, projectionAtQ);
+        if (distanceGlow) setSegment(distanceGlow, qPointForGuide, projectionAtQ);
+        projectionShadow?.position.copy(qPointForGuide.clone().sub(projOrigin));
+        if (constructionGuide?.geometry) {
+          constructionGuide.geometry.setFromPoints([pointEnd, projectionAtQ]);
+          constructionGuide.computeLineDistances();
+        }
+        if (distanceRightAngle?.geometry) {
+          const corner = projectionAtQ;
+          const normalArm = normalLabelUnit.clone().multiplyScalar(-rightAngleSize);
+          const tangentArm = pointEnd.clone().sub(corner);
+          tangentArm.addScaledVector(normalLabelUnit, -tangentArm.dot(normalLabelUnit));
+          if (tangentArm.lengthSq() < 1e-10) {
+            tangentArm.copy(distanceIllustration.userData.tangent);
+          }
+          tangentArm.normalize().multiplyScalar(rightAngleSize);
+          distanceRightAngle.position.set(0, 0, 0);
+          distanceRightAngle.geometry.setFromPoints([
+            corner.clone().add(normalArm),
+            corner.clone().add(normalArm).add(tangentArm),
+            corner.clone().add(tangentArm),
+          ]);
+        }
+        group.userData.distanceConstructionMidpoint = qPointForGuide
+          .clone()
+          .add(projectionAtQ)
+          .multiplyScalar(0.5);
+        updateConstructionVisibility();
+      };
+      group.userData.setDistanceFinalBlink = (progress) => {
+        const active = Number(progress) >= 0;
+        const t = Math.max(0, Math.min(1, Number(progress) || 0));
+        const pulse = 0.5 + 0.5 * Math.cos(t * Math.PI * 10);
+        glowActive = active;
+        constructionGuide.material.color.set(window.GeoScratchColors.forRole('accent'));
+        constructionGuide.material.opacity = 0.95;
+        if (projObj.material) {
+          projObj.material.color.set(distanceColor);
+          projObj.material.opacity = active ? 0.96 : 0.62;
+        }
+        if (distanceGlow?.material) {
+          distanceGlow.material.opacity = active ? 0.12 + 0.34 * pulse : 0;
+          distanceGlow.scale.x = active ? 1.7 + 0.35 * pulse : 1.7;
+          distanceGlow.scale.z = active ? 1.7 + 0.35 * pulse : 1.7;
+        }
+        updateConstructionVisibility();
+      };
       const distanceNormalLength = distanceNormalGlyph?.userData?.vectorLength ?? 0;
       group.userData.setDistanceNormalProgress = (progress) => {
         const t = Math.max(0, Math.min(1, Number(progress) || 0));
@@ -331,6 +419,8 @@ export function initVectorProjectBlock() {
       group.userData.setDistanceConstructionProgress(1);
       group.userData.setDistanceConstructionPhase('distance');
       group.userData.setDistanceNormalProgress(1);
+      group.userData.setDistanceFinalProgress(1);
+      group.userData.setDistanceFinalBlink(1);
     }
 
     // Staged reveal: the operands first, then the projection they produce,

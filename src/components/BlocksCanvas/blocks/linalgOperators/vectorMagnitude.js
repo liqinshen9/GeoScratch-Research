@@ -148,8 +148,15 @@ export function initVectorMagnitude() {
     // See docs/architecture/animation.md#staged-vector-reveal.
     const upstream = window.threeObjStore?.[vVal.userData?.glyph?.blockId];
     if (isPointPlaneProjection) {
+      upstream?.children?.forEach((child) => {
+        if (child.userData?.geoType === 'distance_segment' || child.userData?.geoType === 'distance_glow') {
+          child.userData.clickLabelOwner = group;
+        }
+      });
       upstream?.userData?.setDistanceConstructionProgress?.(1);
       upstream?.userData?.setDistanceConstructionPhase?.('distance');
+      upstream?.userData?.setDistanceFinalProgress?.(1);
+      upstream?.userData?.setDistanceFinalBlink?.(1);
       const constructionMidpoint = upstream?.userData?.distanceConstructionMidpoint;
       if (constructionMidpoint?.isVector3) {
         group.userData.labelAnchors.distanceMid.position = constructionMidpoint.toArray();

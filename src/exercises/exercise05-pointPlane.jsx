@@ -185,14 +185,34 @@ function createPointPMarker(name, blockId) {
   return marker
 }
 
+function applyExercisePointPIdentity(object, blockId) {
+  object.userData = {
+    ...(object.userData || {}),
+    geoType: 'exercise_point_p',
+    srcBlockId: blockId,
+  }
+  object.traverse?.((child) => {
+    child.userData?.labels?.forEach((label) => {
+      label.name = 'P'
+      label.className = 'label--study-coordinate'
+      delete label.text
+    })
+  })
+  return object
+}
+
 function addExercisePointPIfNeeded(objects, workspace) {
-  // A point block plugged into a socket draws no glyph of its own, so the
-  // exercise supplies the marker. Label it with that block's own name rather
-  // than a hardcoded "P", so the scene and the workspace agree.
+  // The plane's defining point may consume the registry's first P-name. This
+  // exercise names its given point semantically, so never expose that internal
+  // numbering as P2 in the scene.
   const block = findPointPBlock(workspace)
   if (!block) return objects
-  if (objects.some(objectIsAtPointP)) return objects
-  return [...objects, createPointPMarker(window.geoNaming?.nameFor(block.id) || 'P', block.id)]
+  const existing = objects.find(objectIsAtPointP)
+  if (existing) {
+    applyExercisePointPIdentity(existing, block.id)
+    return objects
+  }
+  return [...objects, createPointPMarker('P', block.id)]
 }
 
 function findExercisePlaneBlock(workspace) {
@@ -285,9 +305,30 @@ function replaceStudyNormalGlyph(objects, workspace) {
   return decorated
 }
 
+function decoratePlaneDefinition(objects, visible) {
+  objects.forEach((root) =>
+    root?.traverse?.((object) => {
+      if (!isExercisePlaneObject(object)) return
+      const helper = object.children?.find(
+        (child) => child.userData?.geoType === 'parametric_plane_point_normal_group',
+      )
+      if (helper) helper.visible = visible
+      object.userData?.labels?.forEach((label) => {
+        if (label.anchor !== 'point') return
+        label.name = 'A'
+        label.value = vectorNotation.formatVector(PLANE_POINT_A)
+        label.className = 'label--study-coordinate'
+        label.revealed = () => helper?.visible !== false
+      })
+    }),
+  )
+  return objects
+}
+
 function decorateObjects(objects, workspace) {
   let decorated = addExercisePointPIfNeeded(objects, workspace)
   decorated = replaceStudyNormalGlyph(decorated, workspace)
+  decorated = decoratePlaneDefinition(decorated, !workspaceHasPointPVector(workspace))
   const blocks = {
     plane: findExercisePlaneBlock(workspace),
     pointP: findPointPBlock(workspace),
