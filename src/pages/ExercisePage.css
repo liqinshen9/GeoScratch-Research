@@ -24,7 +24,8 @@
     sans-serif;
 }
 
-.exercise-page--editor[data-exercise-id='cube-point-pivot-rotation'] {
+.exercise-page--editor[data-exercise-id='cube-point-pivot-rotation'],
+.exercise-page--editor.exercise-page--wide-task-panel {
   --exercise-task-width: clamp(20rem, 20vw, 25rem);
 }
 
@@ -78,6 +79,8 @@
 }
 
 .exercise-page--editor[data-exercise-id='cube-point-pivot-rotation']
+  .blocklyHighlighted > .blocklyPath,
+.exercise-page--editor[data-exercise-id='point-plane-distance']
   .blocklyHighlighted > .blocklyPath {
   fill: #facc15 !important;
   stroke: #eab308 !important;

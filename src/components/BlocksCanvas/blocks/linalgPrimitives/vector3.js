@@ -2,9 +2,7 @@ import * as Blockly from 'blockly/core'
 import { BLOCK_STYLES } from '../blockColours'
 import { javascriptGenerator, Order } from 'blockly/javascript'
 import { forInstance } from '@/store/colorSystem'
-import { FieldObjectName } from '@/components/BlocksCanvas/blocks/naming/FieldObjectName'
 import { isEffectivelyStandalone } from '@/utils/sceneHelpers'
-import { allowOverflowingInputs } from '@/components/BlocksCanvas/renderers/geoScratchRenderer'
 
 let REGISTERED = false
 
@@ -17,49 +15,32 @@ export function initVec3Block() {
   if (REGISTERED) return
   REGISTERED = true
 
-  // The name badge shares the label's row rather than getting one of its
-  // own: on its own it cost a whole row of height for a two-character badge.
-  function appendCoordinateFields(block, label) {
+  function appendPointFields(block) {
     block
       .appendDummyInput()
-      .appendField(label)
+      .appendField('Point: (')
       .appendField(new Blockly.FieldNumber(1), 'X')
       .appendField(',')
       .appendField(new Blockly.FieldNumber(1), 'Y')
       .appendField(',')
       .appendField(new Blockly.FieldNumber(1), 'Z')
       .appendField(')')
-      .appendField(new FieldObjectName(), 'GEOSCRATCH_NAME')
   }
 
-  // Column-vector layout: the name badge takes the top row and the origin
-  // socket shares it, carrying no label text, so a plugged-in block sits
-  // flush with this block's top edge. The socket is marked as overflowing
-  // (see geoScratchRenderer.js) so connecting a tall block parks it alongside
-  // this one instead of stretching the top row and shoving the coordinates
-  // down the body.
-  function appendColumnVectorFields(block, label) {
-    block
-      .appendValueInput('ORIGIN')
-      .setCheck('vector3')
-      .appendField(new FieldObjectName(), 'GEOSCRATCH_NAME')
-    allowOverflowingInputs(block, 'ORIGIN')
-    block.appendDummyInput().appendField(label)
+  function appendVectorFields(block) {
+    block.appendDummyInput().appendField('Vector')
     for (const axis of ['X', 'Y', 'Z']) {
       block
         .appendDummyInput()
-        .setAlign(Blockly.inputs.Align.CENTRE)
         .appendField(`${axis.toLowerCase()}:`)
         .appendField(new Blockly.FieldNumber(1), axis)
     }
+    block.appendValueInput('ORIGIN').setCheck('vector3').appendField('from point:')
   }
 
-  function initVector3LikeBlock(block, label, tooltip, objectType, options = {}) {
-    if (options.column) {
-      appendColumnVectorFields(block, label)
-    } else {
-      appendCoordinateFields(block, label)
-    }
+  function initVector3LikeBlock(block, tooltip, objectType) {
+    if (objectType === 'point') appendPointFields(block)
+    else appendVectorFields(block)
     block.setStyle(objectType === 'point' ? BLOCK_STYLES.CREATE_POINT : BLOCK_STYLES.CREATE_VECTOR)
     block.setColour(forInstance(objectType, block.id))
     block.setTooltip(tooltip)
@@ -70,13 +51,13 @@ export function initVec3Block() {
 
   Blockly.Blocks['linalg_vec3'] = {
     init() {
-      initVector3LikeBlock(this, 'vector', '3D vector coordinate', 'vector', { column: true })
+      initVector3LikeBlock(this, '3D vector coordinate', 'vector')
     },
   }
 
   Blockly.Blocks['linalg_point'] = {
     init() {
-      initVector3LikeBlock(this, 'Point: (', '3D point coordinate', 'point')
+      initVector3LikeBlock(this, '3D point coordinate', 'point')
     },
   }
 
@@ -118,8 +99,8 @@ export function initVec3Block() {
       ]
     }
 
-    const originInput = block.getInput && block.getInput('ORIGIN')
-    const originConnected = !!originInput?.connection?.targetConnection
+    const originInput = block.getInput?.('ORIGIN')
+    const originConnected = Boolean(originInput?.connection?.targetConnection)
     const originCode = originConnected
       ? javascriptGenerator.valueToCode(block, 'ORIGIN', Order.FUNCTION_CALL)
       : ''
@@ -127,20 +108,15 @@ export function initVec3Block() {
     return [
       `(function(){
       const vec = new THREE.Vector3(${coords});
-      const __anchor = ${originConnected ? originCode || 'new THREE.Vector3(0, 0, 0)' : 'new THREE.Vector3(0, 0, 0)'};
-      ${
-        originConnected
-          ? `// "from point:" tail -- consumed by operators (e.g. vector_arithmetic
-      // draws this operand from here instead of the origin) as well as the
-      // standalone glyph below.
-      vec.userData = { ...(vec.userData || {}), anchor: __anchor.clone() };`
-          : ''
+      const originValue = ${originConnected ? originCode || 'null' : 'null'};
+      const origin = originValue?.isVector3 ? originValue.clone() : new THREE.Vector3(0, 0, 0);
+      if (${originConnected}) {
+        vec.userData = { ...(vec.userData || {}), anchor: origin.clone() };
       }
       ${
         isStandalone
           ? `
       const label = geoNaming.nameFor(${blockId});
-      const origin = __anchor.clone();
       const tip = origin.clone().add(vec);
       const len = vec.length();
       const vectorColor = window.GeoScratchColors.forInstance('vector', ${blockId});
@@ -160,37 +136,6 @@ export function initVec3Block() {
       visual.userData.labels = [
         { anchor: 'tip', name: label, value: vectorNotation.formatVector(vec), distanceFactor: 8, offset: [0.12, 0.12, 0], color: vectorColor },
       ];
-      ${
-        originConnected
-          ? `
-      // A marker at the tail of a vector given a specific origin. Off by
-      // default and behind the "Show Tail Point" setting: the tail is already
-      // implied by where the shaft starts, and the extra dot reads as a
-      // separate object that nobody asked for.
-      const originPointColor = window.GeoScratchColors.forInstance('point', ${blockId});
-      const originMarker = window.geoPointMarker({ color: originPointColor });
-      originMarker.visible = !!(window.useSettingsStore?.getState().settings?.showVectorOriginPoint);
-      originMarker.position.copy(origin);
-      originMarker.userData.geoType = 'linalg_vector_origin_marker';
-      originMarker.userData.srcBlockId = ${blockId};
-
-      const vectorGroup = new THREE.Group();
-      vectorGroup.add(visual, originMarker);
-      vectorGroup.userData.geoType = 'geo_vector';
-      vectorGroup.userData.srcBlockId = ${blockId};
-      vectorGroup.userData.labelAnchors = visual.userData.labelAnchors;
-      vectorGroup.userData.labels = visual.userData.labels;
-      visual = vectorGroup;
-
-      if (window.useSettingsStore) {
-        const unsubscribe = window.useSettingsStore.subscribe((state) => {
-          if (!window.geoIsLiveObject(visual)) { unsubscribe(); return; }
-          originMarker.visible = !!state.settings.showVectorOriginPoint;
-        });
-      }
-      `
-          : ''
-      }
       // Another block is already drawing this exact vector: two coincident
       // glyphs can't be depth-ordered (speckling) and one label hides the
       // other. Hand our label to the owner and drop our own glyph.

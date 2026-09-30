@@ -41,14 +41,7 @@ export function initPointPlaneDistanceBlock() {
 
     // Captured before normalize() mutates it: n is drawn at its own magnitude.
     const normalLength = normalSource.length();
-    // The plane is an input here, so its normal can take the plane's own colour,
-    // matching the arrow parametricPlane draws for the same thing. vectorProject
-    // and the dot product keep the operand colour: there the vector really is an
-    // arbitrary projection target, not a plane's normal.
-    const planeBlockId = plane?.userData?.srcBlockId;
-    const normalColor = planeBlockId
-      ? window.GeoScratchColors.forInstance('plane', planeBlockId)
-      : window.GeoScratchColors.forRole('operandB');
+    const normalColor = window.GeoScratchColors.forRole('operandB');
     const normal = normalSource.normalize();
     const signedDistance = point.clone().sub(planePoint).dot(normal);
     const distance = Math.abs(signedDistance);
@@ -64,7 +57,13 @@ export function initPointPlaneDistanceBlock() {
 
     const pointColor = window.GeoScratchColors.forInstance('point', ${JSON.stringify(block.id)});
     const differenceVectorColor = window.GeoScratchColors.forInstance('vector', ${JSON.stringify(block.id)});
-    const distanceColor = window.GeoScratchColors.forRole('distance');
+    const distanceColor = window.GeoScratchColors.forRole('warning');
+
+    // The distance construction supplies the one explanatory normal. Keep the
+    // plane's defining point, but suppress its built-in duplicate normal arrow.
+    plane.traverse?.((child) => {
+      if (child.userData?.geoType === 'parametric_plane_normal_arrow') child.visible = false;
+    });
 
     const group = new THREE.Group();
     const pointDot = window.geoPointMarker({ color: pointColor, radius: 0.045 });
@@ -86,8 +85,8 @@ export function initPointPlaneDistanceBlock() {
     let segment;
     if (distance > 1e-8) {
       segment = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.022, 0.022, safeLength, 18),
-        new THREE.MeshBasicMaterial({ color: distanceColor, transparent: true, opacity: 0.92, depthWrite: false })
+        new THREE.CylinderGeometry(0.05, 0.05, safeLength, 18),
+        new THREE.MeshBasicMaterial({ color: distanceColor, transparent: true, opacity: 0.62, depthWrite: false })
       );
       segment.position.copy(midpoint);
       segment.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), distanceEnd.clone().sub(distanceStart).normalize());
@@ -144,13 +143,13 @@ export function initPointPlaneDistanceBlock() {
         offset: [0, 0, 0],
         emphasis: true,
         role: 'distance',
-        color: window.GeoScratchColors.forRole('distance'),
+        color: distanceColor,
       },
       {
         anchor: 'normal',
         text: 'n',
         distanceFactor: 8,
-        offset: [0, 0, 0],
+        offset: [0.14, 0.14, 0],
         emphasis: true,
         color: normalColor,
       },

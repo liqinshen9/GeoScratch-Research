@@ -92,6 +92,9 @@ export default function ExercisePage({
   trackingEnabled = true,
   workspaceCloudSyncEnabled = true,
   showDebugSolution = true,
+  wideTaskPanel = false,
+  onPreviousExercise,
+  onNextExercise,
   transformObjects,
   toggleLabelsOnLeftClick = false,
 }) {
@@ -248,7 +251,12 @@ export default function ExercisePage({
   const { Givens, Steps } = exercise
 
   return (
-    <div className="exercise-page exercise-page--editor" data-exercise-id={activeExercise}>
+    <div
+      className={`exercise-page exercise-page--editor${
+        wideTaskPanel ? ' exercise-page--wide-task-panel' : ''
+      }`}
+      data-exercise-id={activeExercise}
+    >
       <main
         ref={editorShellRef}
         className={`editor-shell editor-shell--with-leading exercise-editor-shell${
@@ -259,7 +267,39 @@ export default function ExercisePage({
           leadingHeader={
             <div className="exercise-column-heading">
               <h2>Exercise</h2>
-              {!studyTask && !standalone && (
+              {onPreviousExercise || onNextExercise ? (
+                <div className="exercise-column-heading__nav" aria-label="Study exercise navigation">
+                  {onPreviousExercise && (
+                    <button
+                      type="button"
+                      className="exercise-nav-button exercise-nav-button--wide"
+                      onClick={onPreviousExercise}
+                      title="Previous exercise"
+                      aria-label="Previous exercise"
+                    >
+                      <ArrowLeft theme="outline" size="13" fill="currentColor" aria-hidden="true" />
+                      <span>Previous</span>
+                    </button>
+                  )}
+                  {onNextExercise && (
+                    <button
+                      type="button"
+                      className="exercise-nav-button exercise-nav-button--wide"
+                      onClick={onNextExercise}
+                      title="Next exercise"
+                      aria-label="Next exercise"
+                    >
+                      <span>Next</span>
+                      <ArrowRight
+                        theme="outline"
+                        size="13"
+                        fill="currentColor"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )}
+                </div>
+              ) : !studyTask && !standalone ? (
                 <div className="exercise-column-heading__nav" aria-label="Exercise navigation">
                   <button
                     type="button"
@@ -297,7 +337,7 @@ export default function ExercisePage({
                     <ArrowRight theme="outline" size="13" fill="currentColor" aria-hidden="true" />
                   </button>
                 </div>
-              )}
+              ) : null}
             </div>
           }
           workspace={workspace}

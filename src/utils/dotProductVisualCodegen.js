@@ -52,10 +52,11 @@ export function buildDotProductVisualExpression(blockId, uExpression, vExpressio
         .add(distanceEnd)
         .multiplyScalar(0.5);
 
-      const distanceColor = window.GeoScratchColors.forRole('distance');
+      const distanceColor = window.GeoScratchColors.forRole('warning');
       let distanceVector;
       if (distance > 1e-8) {
-        distanceVector = makeSegment(distanceStart.clone(), distanceEnd.clone(), distanceColor);
+        distanceVector = makeSegment(distanceStart.clone(), distanceEnd.clone(), distanceColor, 0.05);
+        distanceVector.material.opacity = 0.62;
       } else {
         distanceVector = window.geoPointMarker({ color: distanceColor, radius: 0.04 });
         distanceVector.position.copy(distanceStart);
@@ -67,10 +68,7 @@ export function buildDotProductVisualExpression(blockId, uExpression, vExpressio
       distanceVector.userData.srcBlockId = ${id};
 
       const normalUnit = normalLen > 1e-12 ? normalVal.clone().normalize() : new THREE.Vector3(0, 1, 0);
-      // Named and coloured as the vector it is; see the note in vectorProject.js.
-      // A colour from the vector family; see the note in vectorProject.js.
-      const normalBlockId = normalVal.userData?.glyph?.blockId ?? ${id} + '_normal';
-      const normalColor = window.GeoScratchColors.forInstance('vector', normalBlockId);
+      const normalColor = window.GeoScratchColors.forRole('operandB');
       const normalLabel = vectorNotation.getLabel(normalVal, 'n');
       const labelSide = pointDifferenceVal.userData.end.clone().sub(distanceStart);
       labelSide.addScaledVector(normalUnit, -labelSide.dot(normalUnit));
@@ -94,6 +92,11 @@ export function buildDotProductVisualExpression(blockId, uExpression, vExpressio
       const illustration = built.group;
       const normalTip = built.normalTip;
 
+      const pointOwner = window.threeObjStore?.[pointDifferenceVal.userData?.startBlockId];
+      pointOwner?.traverse?.((child) => {
+        if (child.userData?.geoType === 'parametric_plane_normal_arrow') child.visible = false;
+      });
+
       const group = new THREE.Group();
 
       group.add(distanceVector, illustration);
@@ -110,7 +113,7 @@ export function buildDotProductVisualExpression(blockId, uExpression, vExpressio
           anchor: 'normal',
           name: normalLabel,
           distanceFactor: 8,
-          offset: [0, 0, 0],
+          offset: [0.14, 0.14, 0],
           color: normalColor,
         },
         {
@@ -120,7 +123,7 @@ export function buildDotProductVisualExpression(blockId, uExpression, vExpressio
           offset: [0, 0, 0],
           emphasis: true,
           role: 'distance',
-          color: window.GeoScratchColors.forRole('distance'),
+          color: distanceColor,
         },
       ];
 

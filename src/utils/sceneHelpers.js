@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { resolveRefTargetBlock } from '@/utils/variableReference'
+import { getDisplayName } from '@/utils/namingRegistry'
 
 const PLANE_EXTENT = 2000
 
@@ -143,7 +144,7 @@ export function vector3FromBlock(block) {
 export function vectorLabelFromBlock(block) {
   if (!block) return ''
 
-  const ownName = block.getField?.('GEOSCRATCH_NAME')?.getText?.()
+  const ownName = getDisplayName(block)
   if (typeof ownName === 'string' && ownName.trim()) return ownName.trim()
 
   if (block.type === 'geo_variable') return vectorLabelFromBlock(block.getInputTargetBlock('VALUE'))

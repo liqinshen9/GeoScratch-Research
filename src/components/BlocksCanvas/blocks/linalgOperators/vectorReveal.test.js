@@ -18,6 +18,7 @@ import * as Blockly from 'blockly/core'
 import { javascriptGenerator } from 'blockly/javascript'
 import defineBlocks from '@/components/BlocksCanvas/blocks'
 import { installSceneRuntime, RUNTIME_PARAM_NAMES } from '@/utils/sceneRuntime'
+import THREE from '@/utils/three'
 
 beforeAll(() => {
   window.GeoScratchColors = {
@@ -40,6 +41,7 @@ let workspace
 beforeEach(() => {
   workspace = new Blockly.Workspace()
   window.threeObjStore = {}
+  window.__geoScratchAnyPointCache = {}
 })
 
 const vec3 = (x, y, z) => {
@@ -50,15 +52,68 @@ const vec3 = (x, y, z) => {
   return block
 }
 
+const point3 = (x, y, z) => {
+  const block = workspace.newBlock('linalg_point')
+  block.setFieldValue(x, 'X')
+  block.setFieldValue(y, 'Y')
+  block.setFieldValue(z, 'Z')
+  return block
+}
+
 const plug = (parent, input, child) =>
   parent.getInput(input).connection.connect(child.outputConnection)
 
-function run() {
+function run(runtimeMode) {
   const code = javascriptGenerator.workspaceToCode(workspace)
-  const args = installSceneRuntime(workspace)
+  const args = installSceneRuntime(workspace, runtimeMode ? { runtimeMode } : undefined)
   new Function(...RUNTIME_PARAM_NAMES, code)(...args)
   return window.threeObjStore
 }
+
+describe('point-plane projection runtime', () => {
+  it('produces the magnitude and grows the perpendicular guide before d', () => {
+    const plane = workspace.newBlock('parametric_plane')
+    plug(plane, 'point', point3(-5, 0, 2))
+    plug(plane, 'norm', vec3(0.5, 1, 0.5))
+
+    const pointOnPlane = workspace.newBlock('geo_show_point_on_object')
+    plug(pointOnPlane, 'OBJECT', plane)
+
+    const difference = workspace.newBlock('vector_arithmetic')
+    difference.setFieldValue('subtract', 'OP')
+    plug(difference, 'U', point3(-9, 8, 7))
+    plug(difference, 'V', pointOnPlane)
+
+    const projection = workspace.newBlock('vector_project')
+    plug(projection, 'U', difference)
+    plug(projection, 'V', vec3(0.5, 1, 0.5))
+
+    const magnitude = workspace.newBlock('vector_magnitude')
+    plug(magnitude, 'V', projection)
+
+    const store = run('userstudy-Li-point-plane-distance')
+    const projectionGroup = store[projection.id]
+    const magnitudeGroup = store[magnitude.id]
+
+    expect(magnitudeGroup.userData.distance).toBeGreaterThan(0)
+    const perpendicularGuide = projectionGroup.children.find(
+      (child) => child.material?.isLineDashedMaterial,
+    )
+    projectionGroup.userData.setDistanceConstructionPhase('projection')
+    projectionGroup.userData.setDistanceConstructionProgress(0)
+    const guidePositions = perpendicularGuide.geometry.attributes.position
+    const guideStart = new THREE.Vector3().fromBufferAttribute(guidePositions, 0)
+    const guideEnd = new THREE.Vector3().fromBufferAttribute(guidePositions, 1)
+    expect(guideStart.distanceTo(guideEnd)).toBeCloseTo(0)
+    expect(() => projectionGroup.userData.setDistanceConstructionProgress(0.5)).not.toThrow()
+    const distanceSegment = projectionGroup.children.find(
+      (child) => child.userData?.geoType === 'distance_segment',
+    )
+    expect(distanceSegment.visible).toBe(false)
+    projectionGroup.userData.setDistanceConstructionProgress(0.8)
+    expect(distanceSegment.visible).toBe(true)
+  })
+})
 
 // Last length each glyph was grown to, so a stage that does nothing is visible
 // to the test even when the glyph is already on screen at full size.
@@ -74,6 +129,22 @@ function trackLengths(...objects) {
   return (object) => lengths.get(object)
 }
 
+describe('vector origin', () => {
+  it('draws a vector from its connected point', () => {
+    const vector = vec3(1, 2, 3)
+    const point = workspace.newBlock('linalg_point')
+    point.setFieldValue(4, 'X')
+    point.setFieldValue(5, 'Y')
+    point.setFieldValue(6, 'Z')
+    plug(vector, 'ORIGIN', point)
+
+    const store = run()
+
+    expect(vector.getInput('ORIGIN')).toBeDefined()
+    expect(store[vector.id].userData.vectorOrigin.toArray()).toEqual([4, 5, 6])
+  })
+})
+
 describe('vector_arithmetic staged reveal', () => {
   // 3*V1 from the origin, in the socket the arithmetic block's own V input
   // would otherwise fill.
@@ -86,36 +157,33 @@ describe('vector_arithmetic staged reveal', () => {
     return scale
   }
 
-  // V3 "from point:" the tip of the other operand -- the head-to-tail sum.
-  function headToTailSum(tip) {
+  function sum() {
     const arithmetic = workspace.newBlock('vector_arithmetic')
-    const hanging = vec3(1, -2, 1)
-    plug(arithmetic, 'U', hanging)
-    plug(hanging, 'ORIGIN', vec3(...tip))
+    plug(arithmetic, 'U', vec3(1, -2, 1))
     return arithmetic
   }
 
-  it('grows the arrow that supplies the other tail first, whatever socket it is in', () => {
-    const arithmetic = headToTailSum([1, 3, 2])
+  it('grows the first operand before the second', () => {
+    const arithmetic = sum()
     plug(arithmetic, 'V', vec3(1, 3, 2))
     const store = run()
 
-    const hanging = store[`${arithmetic.id}_u`]
-    const fromOrigin = store[`${arithmetic.id}_v`]
-    const lengthOf = trackLengths(hanging, fromOrigin)
+    const first = store[`${arithmetic.id}_u`]
+    const second = store[`${arithmetic.id}_v`]
+    const lengthOf = trackLengths(first, second)
 
     store[arithmetic.id].userData.animate(0.2)
-    expect(lengthOf(fromOrigin)).toBeGreaterThan(0)
-    expect(lengthOf(hanging)).toBe(0)
-    expect(hanging.visible).toBe(false)
+    expect(lengthOf(first)).toBeGreaterThan(0)
+    expect(lengthOf(second)).toBe(0)
+    expect(second.visible).toBe(false)
 
     store[arithmetic.id].userData.animate(0.5)
-    expect(lengthOf(hanging)).toBeGreaterThan(0)
-    expect(hanging.visible).toBe(true)
+    expect(lengthOf(second)).toBeGreaterThan(0)
+    expect(second.visible).toBe(true)
   })
 
   it('leaves an operand another block already draws to that block', () => {
-    const arithmetic = headToTailSum([3, 3, 3])
+    const arithmetic = sum()
     plug(arithmetic, 'V', scaleBy(3))
 
     const store = run()
@@ -131,7 +199,7 @@ describe('vector_arithmetic staged reveal', () => {
   })
 
   it('starts from an empty scene -- the owner picture plays inside its slot', () => {
-    const arithmetic = headToTailSum([3, 3, 3])
+    const arithmetic = sum()
     const scale = scaleBy(3)
     plug(arithmetic, 'V', scale)
 
@@ -146,13 +214,17 @@ describe('vector_arithmetic staged reveal', () => {
     expect(source.visible).toBe(false)
     expect(scaled.visible).toBe(false)
 
-    // Every arrow gets a slot of the same length, nested or not: V1 owns the
-    // first quarter of the run, 3*V1 the second.
+    // The direct first operand owns the first slot. The nested source and its
+    // scaled result then play inside the second operand's slots.
     store[arithmetic.id].userData.animate(0.2)
-    expect(lengthOf(source)).toBeGreaterThan(0)
+    expect(lengthOf(source)).toBe(0)
     expect(lengthOf(scaled)).toBe(0)
 
     store[arithmetic.id].userData.animate(0.3)
+    expect(lengthOf(source)).toBeGreaterThan(0)
+    expect(lengthOf(scaled)).toBe(0)
+
+    store[arithmetic.id].userData.animate(0.6)
     expect(lengthOf(source)).toBeCloseTo(Math.sqrt(3))
     expect(lengthOf(scaled)).toBeGreaterThan(0)
 
@@ -163,7 +235,7 @@ describe('vector_arithmetic staged reveal', () => {
   })
 
   it('still grows that operand -- the owner arrow is what the stage drives', () => {
-    const arithmetic = headToTailSum([3, 3, 3])
+    const arithmetic = sum()
     const scale = scaleBy(3)
     plug(arithmetic, 'V', scale)
 
@@ -172,11 +244,13 @@ describe('vector_arithmetic staged reveal', () => {
     const hanging = store[`${arithmetic.id}_u`]
     const lengthOf = trackLengths(owned, hanging)
 
-    // Four arrows, four quarters: 3*V1 owns the second one.
-    store[arithmetic.id].userData.animate(0.4)
+    store[arithmetic.id].userData.animate(0.2)
+    expect(lengthOf(hanging)).toBeGreaterThan(0)
+    expect(lengthOf(owned)).toBe(0)
+
+    store[arithmetic.id].userData.animate(0.6)
     expect(lengthOf(owned)).toBeGreaterThan(0)
     expect(lengthOf(owned)).toBeLessThan(Math.sqrt(27))
-    expect(lengthOf(hanging)).toBe(0)
 
     store[arithmetic.id].userData.animate(1)
     expect(lengthOf(owned)).toBeCloseTo(Math.sqrt(27))
@@ -186,12 +260,11 @@ describe('vector_arithmetic staged reveal', () => {
 
 describe('vector_arithmetic subtraction', () => {
   // u = (1, -4, 1), v = (1, 3, 1): u - v = (0, -7, 0).
-  function subtract({ vFrom } = {}) {
+  function subtract() {
     const minus = workspace.newBlock('vector_arithmetic')
     minus.setFieldValue('subtract', 'OP')
     plug(minus, 'U', vec3(1, -4, 1))
     const v = vec3(1, 3, 1)
-    if (vFrom) plug(v, 'ORIGIN', vec3(...vFrom))
     plug(minus, 'V', v)
     const store = run()
     const group = store[minus.id]
@@ -289,12 +362,10 @@ describe('vector_arithmetic subtraction', () => {
     expect(length(result)).toBeCloseTo(7, 9)
   })
 
-  // -v follows v's tail, which the student controls: hang v off u's tip and
-  // -v hangs there too, head to tail.
-  it('draws -v from wherever v is drawn from', () => {
-    const { group, negated } = subtract({ vFrom: [1, -4, 1] })
+  it('draws -v from the origin', () => {
+    const { group, negated } = subtract()
     group.userData.animate(0.5)
-    expect(negated.userData.vectorOrigin.toArray()).toEqual([1, -4, 1])
+    expect(negated.userData.vectorOrigin.toArray()).toEqual([0, 0, 0])
   })
 
   it('shows the -v label only while -v is on screen', () => {

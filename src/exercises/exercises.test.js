@@ -93,8 +93,7 @@ const quatAbout = (axis, degrees) =>
   new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(degrees))
 
 const teapotBlock = () => fakeBlock('geo_teapot', {}, { SIZE_INPUT: scalar(1) })
-const specialCubeBlock = () =>
-  fakeBlock('geo_special_cube')
+const specialCubeBlock = () => fakeBlock('geo_special_cube')
 
 function pipelineTo(target, steps) {
   const chain = steps.reduceRight((next, step) => ({ ...step, getNextBlock: () => next }), null)
@@ -309,7 +308,10 @@ describe('exercise 3 (scale 2 and rotate 45 about Y)', () => {
 describe('Cube and corner point pivot rotation exercise', () => {
   const mod = EXERCISE_MODULES['cube-point-pivot-rotation']
   const posed = () =>
-    posedCubeWithPoint({ quaternion: quatAbout(new THREE.Vector3(0, 1, 0), 90), position: [1, 1, 1] })
+    posedCubeWithPoint({
+      quaternion: quatAbout(new THREE.Vector3(0, 1, 0), 90),
+      position: [1, 1, 1],
+    })
 
   it('passes when the cube is moved to the origin, rotated, then moved back', () => {
     const workspace = fakeWorkspace([
@@ -449,6 +451,43 @@ describe('exercise 7 (distance between spheres)', () => {
 describe('exercise 5 (point to plane)', () => {
   const mod = EXERCISE_MODULES['point-plane-distance']
 
+  function pointOnExercisePlane() {
+    const plane = fakeBlock(
+      'parametric_plane',
+      {},
+      {
+        point: point(-5, 0, 2),
+        norm: vec3(0.5, 1, 0.5),
+      },
+    )
+    return fakeBlock('geo_show_point_on_object', {}, { OBJECT: plane })
+  }
+
+  function normalFrom(origin) {
+    return fakeBlock('linalg_vec3', { X: 0.5, Y: 1, Z: 0.5 }, { ORIGIN: origin })
+  }
+
+  function stepFive({ enteredQ }) {
+    const q = pointOnExercisePlane()
+    const difference = fakeBlock(
+      'vector_arithmetic',
+      { OP: 'subtract' },
+      { U: point(-9, 8, 7), V: q },
+    )
+    const normal = normalFrom(point(...enteredQ))
+    const workspace = fakeWorkspace([difference, normal])
+    const objects = [
+      {
+        userData: {
+          geoType: 'annotated_object',
+          srcBlockId: q.id,
+          point: new THREE.Vector3(2.25, -1.5, 3.75),
+        },
+      },
+    ]
+    return mod.evaluate({ objects, workspace })
+  }
+
   it('recognises the point P vector in the workspace', () => {
     const workspace = fakeWorkspace([vec3(-9, 8, 7)])
     expect(mod.evaluate({ objects: [], workspace }).steps.pointP).toBe(true)
@@ -457,6 +496,14 @@ describe('exercise 5 (point to plane)', () => {
   it('does not recognise a different point as P', () => {
     const workspace = fakeWorkspace([vec3(1, 1, 1)])
     expect(mod.evaluate({ objects: [], workspace }).steps.pointP).toBe(false)
+  })
+
+  it('completes step 5 when the normal starts at the recorded Q1 coordinates', () => {
+    expect(stepFive({ enteredQ: [2.25, -1.5, 3.7504] }).steps.normalFromQ).toBe(true)
+  })
+
+  it('does not complete step 5 when the normal starts at a different point', () => {
+    expect(stepFive({ enteredQ: [2.25, -1.5, 4] }).steps.normalFromQ).toBe(false)
   })
 
   it('offers a reusable block template', () => {

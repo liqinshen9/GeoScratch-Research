@@ -1,4 +1,3 @@
-import { buildVectorShaftGlyph } from '@/utils/vectorShaftGlyph'
 import { createPointMarker } from '@/utils/pointMarker'
 
 // The picture drawn for a point-to-plane distance: the plane's normal, a dashed
@@ -16,12 +15,76 @@ import { createPointMarker } from '@/utils/pointMarker'
 //
 // See docs/architecture/animation.md and selection-and-picking.md.
 
-// Enough to clear the distance bar's radius (0.022) plus the glyph's tube
-// (~0.051). Fixed rather than scaled by the distance, which threw the normal
-// further sideways the longer the distance got.
-const NORMAL_SIDE_CLEARANCE = 0.08
-
 const GUIDE_DASH = { dashSize: 0.14, gapSize: 0.1, transparent: true, opacity: 0.82 }
+
+/** Draws the long dashed normal used by the point-to-plane construction. */
+export function buildNormalVectorGlyph(
+  THREE,
+  { blockId, origin, normal, length, color, store = null },
+) {
+  const normalUnit =
+    normal.lengthSq() > 1e-12 ? normal.clone().normalize() : new THREE.Vector3(0, 1, 0)
+  const forwardLength = Math.max(0, length)
+  const normalTip = origin.clone().addScaledVector(normalUnit, forwardLength)
+  const authoredHeadLength = Math.min(0.34, forwardLength)
+  const shaftTip = normalTip.clone().addScaledVector(normalUnit, -authoredHeadLength)
+  const glyph = new THREE.Group()
+
+  const shaft = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([origin.clone(), shaftTip]),
+    new THREE.LineDashedMaterial({
+      color,
+      dashSize: 0.28,
+      gapSize: 0.18,
+      transparent: true,
+      opacity: 0.95,
+    }),
+  )
+  shaft.computeLineDistances()
+  shaft.userData.geoType = 'distance_normal_shaft'
+  shaft.userData.srcBlockId = blockId
+  glyph.add(shaft)
+
+  let head = null
+  if (authoredHeadLength > 0) {
+    const headRadius = 0.12
+    const headGeometry = new THREE.ConeGeometry(headRadius, authoredHeadLength, 12)
+    headGeometry.translate(0, -authoredHeadLength / 2, 0)
+    head = new THREE.Mesh(headGeometry, new THREE.MeshBasicMaterial({ color }))
+    head.position.copy(normalTip)
+    head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalUnit)
+    head.userData.zoomInvariantRadius = headRadius
+    head.userData.thickenGroup = 'vector'
+    head.userData.geoType = 'distance_normal_arrowhead'
+    head.userData.srcBlockId = blockId
+    glyph.add(head)
+  }
+
+  glyph.userData.geoType = 'distance_normal_arrow'
+  glyph.userData.srcBlockId = blockId
+  glyph.userData.vectorOrigin = origin.clone()
+  glyph.userData.vectorTip = normalTip.clone()
+  glyph.userData.vectorLength = forwardLength
+  glyph.userData.setVectorLength = (nextLength) => {
+    const visibleLength = Math.max(0, Math.min(forwardLength, Number(nextLength) || 0))
+    const visibleHeadLength = Math.min(authoredHeadLength, visibleLength)
+    const visibleTip = origin.clone().addScaledVector(normalUnit, visibleLength)
+    const visibleShaftTip = visibleTip.clone().addScaledVector(normalUnit, -visibleHeadLength)
+    shaft.geometry.setFromPoints([origin.clone(), visibleShaftTip])
+    shaft.computeLineDistances()
+    if (head) {
+      head.position.copy(visibleTip)
+      head.visible = visibleLength >= authoredHeadLength
+    }
+    glyph.userData.vectorTip = visibleTip
+    glyph.userData.vectorLength = visibleLength
+    const labelAnchor = glyph.userData.labelAnchors?.normal
+    if (labelAnchor) labelAnchor.position = visibleTip.toArray()
+  }
+  if (store) store[`${blockId}_normal`] = glyph
+
+  return { glyph, tip: normalTip }
+}
 
 /**
  * @param {object} THREE            The augmented THREE the caller is using.
@@ -37,7 +100,7 @@ const GUIDE_DASH = { dashSize: 0.14, gapSize: 0.1, transparent: true, opacity: 0
  * @param {string|number} [opts.footDotColor]
  * @param {boolean} [opts.footDot]  Mark the foot with a dot.
  * @param {object} [opts.store]     threeObjStore, to register the normal glyph.
- * @returns {{group: object, guideLine: object|null, normalGlyph: object, normalTip: object}}
+ * @returns {{group: object, guideLine: object|null, rightAngle: object, normalGlyph: object, normalTip: object}}
  */
 export function buildDistanceIllustration(
   THREE,
@@ -57,11 +120,10 @@ export function buildDistanceIllustration(
   const group = new THREE.Group()
   const normalUnit =
     normal.lengthSq() > 1e-12 ? normal.clone().normalize() : new THREE.Vector3(0, 1, 0)
-  const normalLength = normal.length()
   const accent = accentColor
 
   // A direction along the plane, toward whatever the guide points at. Used for
-  // the right angle's arm and to shift the normal clear of the distance bar.
+  // the right angle's arm.
   const tangent = (guideTo ? guideTo.clone().sub(foot) : new THREE.Vector3()).clone()
   tangent.addScaledVector(normalUnit, -tangent.dot(normalUnit))
   if (tangent.lengthSq() < 1e-10) {
@@ -71,32 +133,17 @@ export function buildDistanceIllustration(
   }
   tangent.normalize()
 
-  // n at its OWN magnitude through the shared glyph, so it follows the vector
-  // style setting, takes a halo, and scales with zoom like any other vector. It
-  // used to be a bespoke dashed ray of length max(2.2, d + 1.4) -- 4.4 units for
-  // a unit normal at d = 3 -- labelled "n" while showing nothing of the sort.
-  const normalGlyph = buildVectorShaftGlyph(
-    THREE,
-    `${blockId}_normal`,
-    foot.clone(),
-    normalUnit.clone(),
-    normalLength > 1e-8 ? normalLength : 1,
-    normalColor,
-  )
-  normalGlyph.userData.geoType = 'distance_normal_arrow'
-  normalGlyph.userData.srcBlockId = blockId
-  // The normal shares the distance bar's origin AND axis, so drawn true it sits
-  // inside the bar. Shifting it along the tangent makes the two read as two
-  // things. Its tail no longer sits exactly on the foot: this arrow shows a
-  // direction, and a direction you cannot see shows nothing.
-  normalGlyph.position.addScaledVector(tangent, NORMAL_SIDE_CLEARANCE)
-  if (store) store[`${blockId}_normal`] = normalGlyph
+  // Draw n as a deliberately tall red vector so its direction is unmistakable.
+  const forwardLength = Math.max(8, Math.abs(distanceLength) + 5)
+  const { glyph: normalGlyph, tip: normalTip } = buildNormalVectorGlyph(THREE, {
+    blockId,
+    origin: foot,
+    normal,
+    length: forwardLength,
+    color: normalColor,
+    store,
+  })
   group.add(normalGlyph)
-
-  const normalTip = foot
-    .clone()
-    .addScaledVector(normalUnit, normalLength > 1e-8 ? normalLength : 1)
-    .addScaledVector(tangent, NORMAL_SIDE_CLEARANCE)
 
   let guideLine = null
   if (guideTo && guideTo.distanceToSquared(foot) > 1e-10) {
@@ -134,8 +181,10 @@ export function buildDistanceIllustration(
   // The Q sweep redraws this each frame as Q moves.
   group.userData.guideLine = guideLine
   group.userData.tangent = tangent
+  group.userData.rightAngle = rightAngle
+  group.userData.rightAngleSize = markerSize
 
-  return { group, guideLine, normalGlyph, normalTip }
+  return { group, guideLine, rightAngle, normalGlyph, normalTip }
 }
 
 export default buildDistanceIllustration

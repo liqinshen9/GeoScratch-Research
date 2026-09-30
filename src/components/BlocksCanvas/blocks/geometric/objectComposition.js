@@ -2,7 +2,6 @@ import * as Blockly from 'blockly/core'
 import { javascriptGenerator, Order } from 'blockly/javascript'
 import { BLOCK_STYLES } from '../blockColours'
 import { forInstance } from '@/store/colorSystem'
-import { FieldObjectName } from '@/components/BlocksCanvas/blocks/naming/FieldObjectName'
 import { geoCubeDefinition } from './geoCube'
 
 let REGISTERED = false
@@ -16,7 +15,9 @@ export default function initObjectCompositionBlocks() {
       this.appendDummyInput().appendField('special block')
       this.setOutput(true, 'obj3D')
       this.setStyle(BLOCK_STYLES.CREATE_CUBE)
-      this.setTooltip('Cube of side length 2, centred at (1, 1, 1), with corner point P at (0, 2, 2).')
+      this.setTooltip(
+        'Cube of side length 2, centred at (1, 1, 1), with corner point P at (0, 2, 2).',
+      )
     },
   }
   javascriptGenerator.forBlock.geo_special_cube = function (block) {
@@ -24,7 +25,10 @@ export default function initObjectCompositionBlocks() {
     const cubeCode = `(${geoCubeDefinition.toString()})(new window.THREE.Vector3(1,1,1), 2, ${JSON.stringify(cubeId)})`
     return javascriptGenerator.forBlock.geo_object_with_point(
       { id: block.id, type: 'geo_special_cube', getInputTargetBlock: () => ({ id: cubeId }) },
-      { valueToCode: (_block, input) => input === 'OBJECT' ? cubeCode : 'new window.THREE.Vector3(0,2,2)' },
+      {
+        valueToCode: (_block, input) =>
+          input === 'OBJECT' ? cubeCode : 'new window.THREE.Vector3(0,2,2)',
+      },
     )
   }
 
@@ -44,7 +48,8 @@ export default function initObjectCompositionBlocks() {
     const point = generator.valueToCode(block, 'POINT', Order.NONE) || 'null'
     const id = JSON.stringify(block.id)
     const childId = JSON.stringify(block.getInputTargetBlock('OBJECT')?.id)
-    return [`(function(){
+    return [
+      `(function(){
       const object = (${object});
       const point = (${point});
       if (!object?.isObject3D || !point?.isVector3) return null;
@@ -72,7 +77,9 @@ export default function initObjectCompositionBlocks() {
       delete window.threeObjStore[${childId}];
       window.threeObjStore[${id}] = group;
       return group;
-    })()`, Order.FUNCTION_CALL]
+    })()`,
+      Order.FUNCTION_CALL,
+    ]
   }
 
   Blockly.Blocks.geo_show_point_on_object = {
@@ -83,9 +90,7 @@ export default function initObjectCompositionBlocks() {
       // outline instead of hanging it off the right edge, so it reads as a
       // container around the object it puts a point on.
       // See docs/architecture/blockly-integration.md#operator-input-layout.
-      this.appendEndRowInput('SHOW_POINT_TITLE')
-        .appendField('Show any point on object')
-        .appendField(new FieldObjectName(), 'GEOSCRATCH_NAME')
+      this.appendEndRowInput('SHOW_POINT_TITLE').appendField('Show any point on object')
       this.appendValueInput('OBJECT').appendField('object:').setCheck('obj3D')
       this.appendEndRowInput('SHOW_POINT_OBJECT_ROW_END')
       this.setInputsInline(true)

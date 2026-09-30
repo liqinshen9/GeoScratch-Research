@@ -49,8 +49,10 @@ export function initVectorMagnitude() {
       : vVal.clone();
 
     const operandAColor = window.GeoScratchColors.forRole('operandA');
-    const distanceColor = window.GeoScratchColors.forRole('distance');
     const warningColor = window.GeoScratchColors.forRole('warning');
+    const distanceColor = isPointPlaneProjection
+      ? warningColor
+      : window.GeoScratchColors.forRole('distance');
     const isPointToPointDistance = isPointDifference && vVal.userData?.pointToPoint;
 
     // Render vector as arrow, or sphere if zero-length
@@ -145,6 +147,14 @@ export function initVectorMagnitude() {
     // contributes the d = ... label -- so it delegates and adds no stage.
     // See docs/architecture/animation.md#staged-vector-reveal.
     const upstream = window.threeObjStore?.[vVal.userData?.glyph?.blockId];
+    if (isPointPlaneProjection) {
+      upstream?.userData?.setDistanceConstructionProgress?.(1);
+      upstream?.userData?.setDistanceConstructionPhase?.('distance');
+      const constructionMidpoint = upstream?.userData?.distanceConstructionMidpoint;
+      if (constructionMidpoint?.isVector3) {
+        group.userData.labelAnchors.distanceMid.position = constructionMidpoint.toArray();
+      }
+    }
     const upstreamStage = typeof upstream?.userData?.animate === 'function'
       ? [{ animate: upstream.userData.animate }]
       : [];

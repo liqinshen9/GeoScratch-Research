@@ -40,20 +40,10 @@ export function initVectorProjectBlock() {
     const fmt = vectorNotation.formatVector;
     const uLabel = vectorNotation.getLabel(uVal, 'u');
     const vLabel = vectorNotation.getLabel(vVal, 'v');
-    // The normal is just the vector you projected onto, so it is named and
-    // coloured as that vector rather than relabelled "n" in a colour of its
-    // own. vector3/vectorScale tag their result with the block that drew it,
-    // which is what makes the instance colour reachable here.
-    // Prefer the block that drew v, so the normal matches that vector if it is
-    // also on screen; otherwise fall back to this glyph's own id. Either way it
-    // is a colour from the VECTOR family, because that is what it is -- not an
-    // operand role, which is why it used to come out red.
-    // Prefer the block that supplied v, so the normal carries that block's own
-    // name and colour rather than a generic "v" in a colour of its own.
-    const vSourceId = vVal.userData?.glyph?.blockId ?? vVal.userData?.srcBlockId ?? null;
-    const vBlockId = vSourceId ?? ${JSON.stringify(block.id)} + '_normal';
-    const normalColor = window.GeoScratchColors.forInstance('vector', vBlockId);
-    const normalName = (vSourceId && geoNaming.nameFor(vSourceId)) || vLabel;
+    // The point-plane diagram uses the second-operand role for its normal. In
+    // the teaching palette that is red, keeping n visually distinct from the
+    // yellow perpendicular distance.
+    const normalColor = window.GeoScratchColors.forRole('operandB');
     const showOperandLabels = vectorNotation.shouldShowOperandLabels(uVal, vVal);
     const projectionLabel = 'proj ' + uLabel + ' on ' + vLabel;
     const baseId = ${JSON.stringify(block.id)};
@@ -88,7 +78,7 @@ export function initVectorProjectBlock() {
     const operandBColor = window.GeoScratchColors.forRole('operandB');
     const resultColor = window.GeoScratchColors.forRole('result');
     const warningColor = window.GeoScratchColors.forRole('warning');
-    const distanceColor = window.GeoScratchColors.forRole('distance');
+    const distanceColor = window.GeoScratchColors.forRole('warning');
 
     const arrowU = window.buildVectorShaftGlyph(
       THREE, baseId + '_u', new THREE.Vector3(0,0,0),
@@ -121,7 +111,7 @@ export function initVectorProjectBlock() {
         const projTip = projOrigin.clone().add(projVec);
         projObj = isPointPlaneDistanceProjection
           ? window.makeExtendableSegment(
-              makeSegment(projOrigin.clone(), projTip.clone(), distanceColor),
+              makeSegment(projOrigin.clone(), projTip.clone(), distanceColor, 0.05),
               projOrigin.clone(),
               projTip.clone()
             )
@@ -142,6 +132,10 @@ export function initVectorProjectBlock() {
     const tag=(o)=>{o.userData.geoType='geo_vector';o.userData.srcBlockId=baseId;return o;};
     tag(arrowU); tag(arrowV); tag(projObj);
     if (isPointPlaneDistanceProjection) projObj.userData.geoType = 'distance_segment';
+    if (isPointPlaneDistanceProjection && projObj.material) {
+      projObj.material.opacity = 0.62;
+      projObj.material.depthWrite = false;
+    }
 
     // Guide: tip(u) -> tip(proj). Hide it for point-plane distance so it is not mistaken for the distance.
     const uTip = pointEnd ? pointEnd.clone() : uVal.clone();
@@ -150,6 +144,10 @@ export function initVectorProjectBlock() {
     let projectionShadow = null;
     let distanceIllustration = null;
     let normalLabelTipFromIllustration = null;
+    let distanceNormalGlyph = null;
+    let distanceRightAngle = null;
+    let constructionGuide = null;
+    let qPointForGuide = null;
     if (!isPointPlaneDistanceProjection) {
       const guideGeom = new THREE.BufferGeometry().setFromPoints([uTip, pTip]);
       const guideMat  = new THREE.LineBasicMaterial({ color: warningColor, transparent:true, opacity:1 });
@@ -158,7 +156,7 @@ export function initVectorProjectBlock() {
       guideLine.userData.srcBlockId=${JSON.stringify(block.id)};
     } else {
       projectionShadow = makeProjectionShadow(projOrigin);
-      const qPointForGuide = uVal.userData.start?.isVector3 ? uVal.userData.start.clone() : uTip.clone();
+      qPointForGuide = uVal.userData.start?.isVector3 ? uVal.userData.start.clone() : uTip.clone();
       const illustration = window.buildDistanceIllustration(THREE, {
         blockId: ${JSON.stringify(block.id)},
         foot: projOrigin,
@@ -171,11 +169,51 @@ export function initVectorProjectBlock() {
       });
       distanceIllustration = illustration.group;
       normalLabelTipFromIllustration = illustration.normalTip;
+      distanceNormalGlyph = illustration.normalGlyph;
+      distanceRightAngle = illustration.rightAngle;
+
+      // Keep n based at Q. This dashed guide joins P to its perpendicular
+      // intersection with that normal line.
+      const normalForConstruction = lenV > 1e-12
+        ? vVal.clone().normalize()
+        : new THREE.Vector3(0, 1, 0);
+      const qToP = pointEnd.clone().sub(qPointForGuide);
+      const initialProjectionTip = qPointForGuide.clone().addScaledVector(
+        normalForConstruction,
+        qToP.dot(normalForConstruction)
+      );
+      constructionGuide = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([pointEnd, initialProjectionTip]),
+        new THREE.LineDashedMaterial({
+          color: window.GeoScratchColors.forRole('accent'),
+          dashSize: 0.14,
+          gapSize: 0.1,
+          transparent: true,
+          opacity: 0.82,
+        })
+      );
+      constructionGuide.computeLineDistances();
+      constructionGuide.userData.geoType = 'geo_helper';
+      constructionGuide.userData.srcBlockId = ${JSON.stringify(block.id)};
+      constructionGuide.visible = false;
+
+      // The plane nested in "Show any point on object" already contains its
+      // own normal arrow. Once this diagram supplies the red normal, hide that
+      // duplicate while retaining the plane's defining point marker.
+      const pointOwner = window.threeObjStore?.[uVal.userData?.startBlockId];
+      pointOwner?.traverse?.((child) => {
+        if (child.userData?.geoType === 'parametric_plane_normal_arrow') child.visible = false;
+      });
     }
 
     const group = new THREE.Group();
     if (isPointPlaneDistanceProjection) {
-      group.add(projObj, projectionShadow, distanceIllustration);
+      group.add(
+        projObj,
+        projectionShadow,
+        distanceIllustration,
+        constructionGuide
+      );
     } else {
       group.add(arrowU, arrowV, projObj, guideLine);
     }
@@ -199,7 +237,7 @@ export function initVectorProjectBlock() {
     const shownWith = (obj) => () => !obj || obj.visible !== false;
     group.userData.labels = isPointPlaneDistanceProjection
       ? [
-        { anchor:'normal', name: normalName, value: fmt(vVal), distanceFactor:8, offset:[0,0,0], color: normalColor, revealed: shownWith(distanceIllustration) },
+        { anchor:'normal', text:'n', distanceFactor:8, offset:[0.14,0.14,0], color: normalColor, revealed: shownWith(distanceIllustration) },
       ]
       : showOperandLabels
         ? [
@@ -210,6 +248,90 @@ export function initVectorProjectBlock() {
         : [
         { anchor:'pTip', name: projectionLabel, value: fmt(projVec), distanceFactor:8, offset:[0.12,0.12,0], color: projLen > 1e-8 ? resultColor : warningColor, revealed: shownWith(projObj) },
       ];
+
+    if (isPointPlaneDistanceProjection && qPointForGuide && pointEnd) {
+      const finalNormalTip = normalLabelTip.clone();
+      const projectionDirection = projVec.lengthSq() > 1e-12
+        ? projVec.clone().normalize()
+        : normalLabelUnit.clone();
+      const projectionAtQ = qPointForGuide.clone().addScaledVector(projectionDirection, projLen);
+      const rightAngleSize = distanceIllustration?.userData?.rightAngleSize ?? 0.24;
+      let constructionGuideProgress = 0;
+      let constructionPhase = 'normal';
+      const setSegment = (segment, start, end, authoredLength = null) => {
+        const delta = end.clone().sub(start);
+        const length = delta.length();
+        segment.scale.y = authoredLength > 1e-8 ? length / authoredLength : 1;
+        segment.position.copy(start).add(end).multiplyScalar(0.5);
+        if (length > 1e-8) {
+          segment.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), delta.normalize());
+        }
+      };
+      const updateConstructionVisibility = () => {
+        const showProjection = constructionPhase !== 'normal';
+        const guideComplete = constructionGuideProgress >= 0.999;
+        projObj.visible = showProjection && guideComplete;
+        projectionShadow.visible = showProjection && guideComplete;
+        distanceRightAngle.visible = showProjection && guideComplete;
+        constructionGuide.visible = showProjection;
+        if (distanceIllustration?.userData?.guideLine) {
+          distanceIllustration.userData.guideLine.visible = false;
+        }
+      };
+      group.userData.setDistanceConstructionProgress = (progress) => {
+        const t = Math.max(0, Math.min(1, Number(progress) || 0));
+        const rawGuideProgress = Math.min(1, t / 0.8);
+        const guideProgress = rawGuideProgress * rawGuideProgress * (3 - 2 * rawGuideProgress);
+        constructionGuideProgress = rawGuideProgress;
+        const translation = qPointForGuide.clone().sub(projOrigin);
+
+        setSegment(projObj, qPointForGuide, projectionAtQ);
+        distanceNormalGlyph?.position.copy(translation);
+        projectionShadow?.position.copy(translation);
+
+        if (constructionGuide?.geometry) {
+          const guideTip = pointEnd.clone().lerp(projectionAtQ, guideProgress);
+          constructionGuide.geometry.setFromPoints([pointEnd, guideTip]);
+          constructionGuide.computeLineDistances();
+        }
+
+        if (distanceRightAngle?.geometry) {
+          const corner = projectionAtQ;
+          const normalArm = projectionDirection.clone().multiplyScalar(-rightAngleSize);
+          const tangentArm = pointEnd.clone().sub(corner);
+          tangentArm.addScaledVector(projectionDirection, -tangentArm.dot(projectionDirection));
+          if (tangentArm.lengthSq() < 1e-10) tangentArm.copy(distanceIllustration.userData.tangent);
+          tangentArm.normalize().multiplyScalar(rightAngleSize);
+          distanceRightAngle.position.set(0, 0, 0);
+          distanceRightAngle.geometry.setFromPoints([
+            corner.clone().add(normalArm),
+            corner.clone().add(normalArm).add(tangentArm),
+            corner.clone().add(tangentArm),
+          ]);
+        }
+
+        const movedNormalTip = finalNormalTip.clone().add(translation);
+        group.userData.labelAnchors.normal.position = movedNormalTip.toArray();
+        group.userData.distanceConstructionMidpoint = qPointForGuide.clone().add(projectionAtQ).multiplyScalar(0.5);
+        updateConstructionVisibility();
+      };
+      group.userData.setDistanceConstructionPhase = (phase) => {
+        constructionPhase = phase;
+        updateConstructionVisibility();
+      };
+      const distanceNormalLength = distanceNormalGlyph?.userData?.vectorLength ?? 0;
+      group.userData.setDistanceNormalProgress = (progress) => {
+        const t = Math.max(0, Math.min(1, Number(progress) || 0));
+        distanceNormalGlyph?.userData?.setVectorLength?.(distanceNormalLength * t);
+        const animatedTip = qPointForGuide
+          .clone()
+          .addScaledVector(normalLabelUnit, distanceNormalLength * t);
+        group.userData.labelAnchors.normal.position = animatedTip.toArray();
+      };
+      group.userData.setDistanceConstructionProgress(1);
+      group.userData.setDistanceConstructionPhase('distance');
+      group.userData.setDistanceNormalProgress(1);
+    }
 
     // Staged reveal: the operands first, then the projection they produce,
     // then the helper geometry that explains it. A point-plane projection has

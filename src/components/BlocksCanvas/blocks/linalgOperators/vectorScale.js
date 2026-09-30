@@ -1,6 +1,7 @@
 import * as Blockly from 'blockly/core'
 import { BLOCK_STYLES } from '../blockColours'
 import { javascriptGenerator, Order } from 'blockly/javascript'
+import { getDisplayName } from '@/utils/namingRegistry'
 
 let REGISTERED = false
 
@@ -18,8 +19,7 @@ function operandName(block, inputName, fallback) {
   // A geo_variable wrapper is transparent here -- the name lives on the block
   // it wraps (or on the wrapper itself when the value is a named expression).
   while (target?.type === 'geo_variable') target = target.getInputTargetBlock('VALUE') ?? null
-  const raw =
-    target?.getField('GEOSCRATCH_NAME')?.getText?.() || target?.getFieldValue?.('GEOSCRATCH_NAME')
+  const raw = target ? getDisplayName(target) : ''
   return JSON.stringify(typeof raw === 'string' && raw.trim() ? raw.trim() : fallback)
 }
 
@@ -171,6 +171,7 @@ export function initVectorScaleBlock() {
     vectorNotation.setVectorMetadata(scaled, {
       geoType: 'named_vector_expression',
       label: scaledLabel,
+      anchor: anchor.clone(),
       // Provenance: this exact arrow is already on screen, from this tail, so
       // an operator downstream draws no coincident copy of it.
       // See vectorArithmetic.js's ownerGlyphs.

@@ -127,19 +127,15 @@ export function initVectorArithmeticBlock() {
       ? window.GeoScratchColors.forRole('result')
       : ${vColorExpr};
 
-    // Vector arithmetic is anchor-agnostic: each operand is drawn from the
-    // origin, so a + b and a - b read as free vectors. The exception is an
-    // operand that carries its own tail via a "from point:" vector -- that one
-    // is drawn from the supplied point. To see the head-to-tail picture a
-    // student sets the second operand's "from point:" to the first vector's
-    // tip themselves. (The point-difference path below keeps its own P -> Q
-    // geometry and never uses these two arrows.)
-    const anchorOf = (value) =>
-      (value.userData?.anchor && value.userData.anchor.isVector3)
-        ? value.userData.anchor.clone()
-        : origin.clone();
-    const uAnchor = anchorOf(uVal);
-    const vAnchor = anchorOf(vVal);
+    // A vector can carry an explicit "from point" tail. Plain vectors remain
+    // free vectors at the origin; the point-difference path below still keeps
+    // its own Q -> P geometry independently.
+    const anchorFor = (value) => {
+      const anchor = value.userData?.anchor ?? value.userData?.glyph?.anchor;
+      return anchor?.isVector3 ? anchor.clone() : origin.clone();
+    };
+    const uAnchor = anchorFor(uVal);
+    const vAnchor = anchorFor(vVal);
 
     // The block that produced an operand may already be drawing that exact
     // arrow from that exact tail (a standalone vector block, Scale Vector's
@@ -222,9 +218,8 @@ export function initVectorArithmeticBlock() {
       resObj = window.geoPointMarker({ color: window.GeoScratchColors.forRole('warning'), radius: 0.04 });
     }
 
-    // u - v shows v's negative while it plays: grown from v's own tail alongside
-    // v, so a student who hangs v off u's tip sees u + (-v) head to tail. Hidden
-    // at rest. See docs/architecture/animation.md#subtraction-shows-the-negative.
+    // u - v shows v's negative from the origin while it plays. Hidden at rest.
+    // See docs/architecture/animation.md#subtraction-shows-the-negative.
     const negatedV = ${op === 'subtract' ? 'true' : 'false'} && !isPointDifference && lenV > 1e-8
       ? window.buildVectorShaftGlyph(
         THREE, baseId + '_negv', vAnchor.clone(), vVal.clone().negate().normalize(),

@@ -1,6 +1,11 @@
 import THREE from '@/utils/three'
+import { useEffect } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { createVectorNotationRuntime } from '@/utils/vectorNotation'
 import { createPointMarker } from '@/utils/pointMarker'
+import { buildNormalVectorGlyph } from '@/utils/distanceIllustration'
+import usePivotPlaybackStore from '@/store/usePivotPlaybackStore'
+import { installPointPlaneStepAnimation } from './shared/pointPlaneStepAnimation'
 import {
   blockMatchesVec3,
   closeNumber,
@@ -8,6 +13,7 @@ import {
   getInputBlock,
   objectOrChildMatches,
   planeNormalFromBlock,
+  vec3FromBlock,
   vectorMatches,
   POINT_VECTOR_BLOCK_TYPES,
 } from './shared/blockQueries'
@@ -130,6 +136,10 @@ function isNormalVectorBlock(block) {
   return blockMatchesVec3(block, PLANE_NORMAL)
 }
 
+function isNormalFromPointBlock(block) {
+  return isNormalVectorBlock(block) && getInputBlock(block, 'ORIGIN')?.type === 'linalg_point'
+}
+
 function isPointDifferenceBlock(block) {
   return (
     block?.type === 'vector_arithmetic' &&
@@ -149,13 +159,13 @@ function objectIsAtPointP(object) {
   )
 }
 
-function createPointPMarker(name) {
+function createPointPMarker(name, blockId) {
   // Colour comes off the window surface rather than a static import so this
   // module stays importable outside the browser (its checker logic is
   // unit-tested in a node environment).
   const color =
     window.GeoScratchColors?.forInstance('point', POINT_P_COLOR_SEED) ?? POINT_MARKER_FALLBACK_COLOR
-  const marker = createPointMarker({ color, geoType: 'exercise_point_p' })
+  const marker = createPointMarker({ color, geoType: 'exercise_point_p', srcBlockId: blockId })
 
   marker.position.copy(POINT_P)
   marker.userData.labelAnchors = {
@@ -182,7 +192,136 @@ function addExercisePointPIfNeeded(objects, workspace) {
   const block = findPointPBlock(workspace)
   if (!block) return objects
   if (objects.some(objectIsAtPointP)) return objects
-  return [...objects, createPointPMarker(window.geoNaming?.nameFor(block.id) || 'P')]
+  return [...objects, createPointPMarker(window.geoNaming?.nameFor(block.id) || 'P', block.id)]
+}
+
+function findExercisePlaneBlock(workspace) {
+  return workspace?.getBlocksByType('parametric_plane', false).find(isExercisePlaneBlock) ?? null
+}
+
+function findExercisePointQBlock(workspace) {
+  return (
+    workspace?.getBlocksByType('geo_show_point_on_object', false).find(isExercisePointQBlock) ??
+    null
+  )
+}
+
+function findPointDifferenceBlock(workspace) {
+  return workspace?.getBlocksByType('vector_arithmetic', false).find(isPointDifferenceBlock) ?? null
+}
+
+function findProjectionBlock(workspace) {
+  return (
+    workspace
+      ?.getBlocksByType('vector_project', false)
+      .find(
+        (block) =>
+          isPointDifferenceBlock(getInputBlock(block, 'U')) &&
+          isNormalVectorBlock(getInputBlock(block, 'V')),
+      ) ?? null
+  )
+}
+
+function findMagnitudeBlock(workspace) {
+  return (
+    workspace?.getBlocksByType('vector_magnitude', false).find((block) => {
+      const projectBlock = getInputBlock(block, 'V')
+      return projectBlock && projectBlock === findProjectionBlock(workspace)
+    }) ?? null
+  )
+}
+
+function findNormalFromQBlock(workspace) {
+  return workspace?.getBlocksByType('linalg_vec3', false).find(isNormalFromPointBlock) ?? null
+}
+
+function findPointQObject(objects, workspace) {
+  const pointQBlock = getInputBlock(findPointDifferenceBlock(workspace), 'V')
+  return (
+    objects.find(
+      (object) =>
+        object?.userData?.geoType === 'annotated_object' &&
+        object.userData.srcBlockId === pointQBlock?.id,
+    ) ?? null
+  )
+}
+
+function normalStartsAtRecordedQ(objects, workspace) {
+  const normalBlock = findNormalFromQBlock(workspace)
+  const qPoint = findPointQObject(objects, workspace)?.userData?.point
+  const enteredPoint = vec3FromBlock(getInputBlock(normalBlock, 'ORIGIN'))
+  // Q1 is shown to three decimal places, so accept the coordinates the
+  // participant can actually read and enter from the 3D label.
+  return Boolean(qPoint?.isVector3 && vectorMatches(enteredPoint, qPoint, 0.001))
+}
+
+function replaceStudyNormalGlyph(objects, workspace) {
+  if (window.__geoScratchRuntimeMode !== 'userstudy-Li-point-plane-distance') return objects
+
+  const normalBlock = findNormalFromQBlock(workspace)
+  const objectIndex = objects.findIndex(
+    (object) => object?.userData?.srcBlockId === normalBlock?.id,
+  )
+  const origin = vec3FromBlock(getInputBlock(normalBlock, 'ORIGIN'))
+  const normal = vec3FromBlock(normalBlock)
+  if (objectIndex < 0 || !origin || !normal) return objects
+
+  const color = window.GeoScratchColors.forRole('operandB')
+  const { glyph, tip } = buildNormalVectorGlyph(THREE, {
+    blockId: normalBlock.id,
+    origin,
+    normal,
+    length: Math.max(8, CORRECT_DISTANCE + 5),
+    color,
+  })
+  glyph.userData.labelAnchors = { normal: { type: 'world', position: tip.toArray() } }
+  glyph.userData.labels = [
+    { anchor: 'normal', text: 'n', distanceFactor: 8, offset: [0.12, 0.12, 0], color },
+  ]
+  window.threeObjStore[normalBlock.id] = glyph
+
+  const decorated = [...objects]
+  decorated[objectIndex] = glyph
+  return decorated
+}
+
+function decorateObjects(objects, workspace) {
+  let decorated = addExercisePointPIfNeeded(objects, workspace)
+  decorated = replaceStudyNormalGlyph(decorated, workspace)
+  const blocks = {
+    plane: findExercisePlaneBlock(workspace),
+    pointP: findPointPBlock(workspace),
+    pointQ: findExercisePointQBlock(workspace),
+    difference: findPointDifferenceBlock(workspace),
+    normalFromQ: findNormalFromQBlock(workspace),
+    projection: findProjectionBlock(workspace),
+    magnitude: findMagnitudeBlock(workspace),
+  }
+  if (Object.values(blocks).every(Boolean)) {
+    installPointPlaneStepAnimation({ objects: decorated, workspace, blocks })
+  }
+  return decorated
+}
+
+function AnimationButton({ objects, workspace }) {
+  const target = objects.find((object) => typeof object?.userData?.animateSteps === 'function')
+  useEffect(
+    () => () => {
+      usePivotPlaybackStore.getState().stop()
+      workspace?.highlightBlock?.(null)
+    },
+    [workspace],
+  )
+  return (
+    <button
+      type="button"
+      className="exercise-step-animation"
+      disabled={!target}
+      onClick={() => usePivotPlaybackStore.getState().play(target)}
+    >
+      <FontAwesomeIcon icon="fa-solid fa-play" /> Show animation
+    </button>
+  )
 }
 
 function hasExercisePlane(objects) {
@@ -255,9 +394,15 @@ function Steps({ steps, passed }) {
     <ol className={`exercise-task-steps${passed ? ' is-passed' : ''}`}>
       <li className={steps.plane ? 'is-complete' : ''}>Create: plane</li>
       <li className={steps.pointP ? 'is-complete' : ''}>Create: Point P</li>
-      <li className={steps.pointQ ? 'is-complete' : ''}>Create: any point Q on the plane</li>
+      <li className={steps.pointQ ? 'is-complete' : ''}>
+        Create: any point Q1 on the plane. Left-click Q1 in the 3D view and note its coordinates.
+      </li>
       <li className={steps.difference ? 'is-complete' : ''}>
         Compute: P - Q with the Vector Arithmetic block.
+      </li>
+      <li className={steps.normalFromQ ? 'is-complete' : ''}>
+        Create: Point Q1 with the coordinates you noted, then create the normal n = (0.5, 1, 0.5)
+        from that point.
       </li>
       <li className={steps.projection ? 'is-complete' : ''}>
         Project: P - Q onto n with the Vector Project block.
@@ -292,7 +437,8 @@ function readDistance(objects) {
 function evaluate({ objects, workspace }) {
   const { distance, target } = readDistance(objects)
   const distanceIsCorrect = distance !== null && closeNumber(distance, CORRECT_DISTANCE, 0.01)
-  const passed = distanceIsCorrect && hasValidDistanceComputation(workspace)
+  const normalFromRecordedQ = normalStartsAtRecordedQ(objects, workspace)
+  const passed = distanceIsCorrect && hasValidDistanceComputation(workspace) && normalFromRecordedQ
 
   const hasPointP = workspaceHasPointPVector(workspace)
   const hasPointQ = hasPointQOnExercisePlane(objects)
@@ -311,6 +457,7 @@ function evaluate({ objects, workspace }) {
       pointP: hasPointP,
       pointQ: hasPointQ,
       difference: hasPointP && hasPointQ && hasPointDifferenceBlock(workspace),
+      normalFromQ: normalFromRecordedQ,
       // The projection ticks on its own, before the magnitude finishes the job.
       projection: hasProjectionOntoNormalBlock(workspace),
       distance: passed,
@@ -324,7 +471,8 @@ export default {
   Givens,
   Steps,
   evaluate,
-  decorateObjects: addExercisePointPIfNeeded,
+  decorateObjects,
+  AnimationButton,
   solutionXml: SOLUTION_XML,
   reusableBlockTemplate: {
     defaultName: 'Distance from point to plane',
