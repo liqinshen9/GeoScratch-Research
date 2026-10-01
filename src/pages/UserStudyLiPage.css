@@ -6,7 +6,7 @@
   overscroll-behavior: contain;
   background: #f8fafc;
   color: #111827;
-  padding: 28px 18px 48px;
+  padding: 28px 18px 120px;
 }
 
 .user-study-li-form-header,
@@ -322,14 +322,15 @@
 }
 
 .user-study-li-actions {
-  position: sticky;
-  bottom: 0;
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
   z-index: 1;
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  width: min(720px, 100%);
-  margin: 4px auto 0;
+  width: fit-content;
+  margin: 0;
   border: 1px solid #d9e0ef;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
@@ -366,7 +367,7 @@
 }
 
 .user-study-li-save-message {
-  margin: -4px 0 0;
+  margin: 80px 0 0;
   color: #166534;
   font-size: 14px;
   font-weight: 700;
@@ -394,5 +395,8 @@
 
   .user-study-li-actions {
     display: grid;
+    right: 12px;
+    bottom: 12px;
+    width: calc(100% - 24px);
   }
 }
