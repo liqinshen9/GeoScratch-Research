@@ -142,6 +142,14 @@
   line-height: 1.2;
 }
 
+.user-study-li-section-title {
+  margin: 0 0 4px;
+  color: #111827;
+  font-size: 18px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
 .user-study-li-two-column {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -168,9 +176,9 @@
   font-weight: 700;
 }
 
-.user-study-li-field input {
+.user-study-li-field input,
+.user-study-li-field textarea {
   width: 100%;
-  min-height: 46px;
   border: 1px solid #cfd8e8;
   border-radius: 8px;
   background: #ffffff;
@@ -180,13 +188,25 @@
   font-weight: 500;
 }
 
+.user-study-li-field input {
+  min-height: 46px;
+}
+
+.user-study-li-field textarea {
+  min-height: 118px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 .user-study-li-field input:focus,
+.user-study-li-field textarea:focus,
 .user-study-li-option input:focus-visible {
   outline: 3px solid rgba(0, 46, 166, 0.2);
   outline-offset: 2px;
 }
 
 .user-study-li-field input:disabled,
+.user-study-li-field textarea:disabled,
 .user-study-li-option input:disabled + span {
   cursor: not-allowed;
   opacity: 0.56;
@@ -222,10 +242,37 @@
   line-height: 1.45;
 }
 
+.user-study-li-rating-question p {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.user-study-li-rating-question legend {
+  margin-bottom: 0;
+}
+
+.user-study-li-rating-question + .user-study-li-rating-question {
+  margin-top: 24px;
+  padding-top: 24px;
+}
+
 .user-study-li-options {
   display: grid;
   gap: 8px;
   margin-top: 12px;
+}
+
+.user-study-li-inline-options,
+.user-study-li-rating-options {
+  grid-template-columns: repeat(auto-fit, minmax(88px, max-content));
+  column-gap: 18px;
+}
+
+.user-study-li-rating-options {
+  grid-template-columns: repeat(5, minmax(44px, max-content));
+  column-gap: 30px;
+  max-width: none;
+  margin-bottom: 8px;
 }
 
 .user-study-li-option {
@@ -252,6 +299,19 @@
 
 .user-study-li-detail {
   margin-top: 14px;
+}
+
+.user-study-li-open-question {
+  padding-top: 22px;
+}
+
+.user-study-li-section-title + .user-study-li-open-question {
+  padding-top: 10px;
+}
+
+.user-study-li-open-question + .user-study-li-open-question {
+  border-top: 1px solid #edf0f6;
+  margin-top: 18px;
 }
 
 .user-study-li-actions {
