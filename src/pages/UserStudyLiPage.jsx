@@ -17,6 +17,8 @@ const RESPONSE_SETTING_KEY = 'userstudyLi.acceptResponses'
 const RESPONSE_BACKUP_KEY = 'userstudyLi.demographicsResponses'
 const CONDITION_RESPONSE_SETTING_KEY = 'userstudyLi.acceptConditionResponses'
 const CONDITION_RESPONSE_BACKUP_KEY = 'userstudyLi.conditionResponses'
+const POST_RESPONSE_SETTING_KEY = 'userstudyLi.acceptPostStudyResponses'
+const POST_RESPONSE_BACKUP_KEY = 'userstudyLi.postStudyResponses'
 const CURRENT_RESEARCH_ID_KEY = 'userstudyLi.currentResearchId'
 
 const QUESTIONNAIRE_SECTIONS = [
@@ -288,6 +290,218 @@ const CONDITION_OPEN_FIELDS = [
       'What part of the exercises made it difficult to understand the geometry concepts? Please explain.',
   },
 ]
+const POST_META_FIELDS = [
+  {
+    id: 'conditionOrder',
+    label: 'Condition order',
+    options: ['GeoScratch Exercise first', 'Traditional Exercise first'],
+  },
+]
+const POST_STUDY_SECTIONS = [
+  {
+    title: 'Section A',
+    note: 'This section is evaluating GeoScratch.',
+    ratings: [
+      {
+        id: 'controlsObjectClarity',
+        label:
+          'The block-based controls made it clear how to create and change the geometric objects needed for the exercises.',
+      },
+      {
+        id: 'controlsFindUse',
+        label:
+          'I could easily find and use the block-based controls I needed to complete the tasks.',
+      },
+      {
+        id: 'controlsWithoutTrialError',
+        label: 'I could use the block-based controls without unnecessary trial and error.',
+      },
+      {
+        id: 'blocksViewConnectionClear',
+        label: 'The connection between the blocks and the 3D view was clear.',
+      },
+    ],
+    open: [
+      {
+        id: 'interfaceEasiestHardest',
+        label:
+          'Which part of the GeoScratch interface made it easiest or hardest to complete the exercises, and why? Please give a specific example.',
+      },
+      {
+        id: 'sectionAAdditional',
+        label: 'Is there anything you would like to add or explain further about your answers in this section?',
+      },
+    ],
+  },
+  {
+    title: 'Section B',
+    note: 'This section is evaluating GeoScratch.',
+    ratings: [
+      {
+        id: 'blocksReduceFormulaReliance',
+        label:
+          'Using blocks helped me perform geometric operations without relying heavily on mathematical formulas.',
+      },
+      {
+        id: 'blocksBreakProblemSteps',
+        label: 'Using blocks helped me break a geometry problem into smaller steps.',
+      },
+      {
+        id: 'blocksUsefulLearning',
+        label: 'I found the block-based approach useful for learning 3D geometry.',
+      },
+      {
+        id: 'blockPurposeClear',
+        label: 'I could tell what each block was supposed to do before using it.',
+      },
+      {
+        id: 'blockConnectionsUnderstanding',
+        label:
+          'The way blocks connected helped me understand which geometric operations could be used together.',
+      },
+      {
+        id: 'blocksFeltLimited',
+        label: 'I felt limited by the blocks when trying to express my solution.',
+      },
+    ],
+    open: [
+      {
+        id: 'blocksChangedThinking',
+        label:
+          'Did using blocks change how you thought about or approached the geometry problems? If so, how? Please give a specific example.',
+      },
+      {
+        id: 'blocksHelpfulWithoutFormulas',
+        label:
+          'Did you find the block-based approach helpful for understanding the geometry without relying heavily on formulas?',
+      },
+      {
+        id: 'sectionBAdditional',
+        label: 'Is there anything you would like to add or explain further about your answers in this section?',
+      },
+    ],
+  },
+  {
+    title: 'Section C',
+    note: 'This section is evaluating GeoScratch.',
+    ratings: [
+      {
+        id: 'viewVisualizationHelp',
+        label: 'The 3D view helped me visualize the geometric objects and their relationships.',
+      },
+      {
+        id: 'animationConstructionHelp',
+        label:
+          'The animation helped me understand how the geometric objects were constructed step by step.',
+      },
+      {
+        id: 'feedbackUnderstandingHelp',
+        label:
+          'The feedback after my actions or answers helped me understand why my solution was correct or incorrect.',
+      },
+      {
+        id: 'instructionsHintsFocus',
+        label:
+          'The instructions, or hints helped me focus on the important parts of the geometry problem.',
+      },
+      {
+        id: 'reasoningBehindSolution',
+        label:
+          'The GeoScratch exercises helped me understand the reasoning behind the solution, rather than only following the steps to complete the task.',
+      },
+      {
+        id: 'difficultyAppropriate',
+        label: 'The difficulty level of the GeoScratch exercises was appropriate.',
+      },
+    ],
+    open: [
+      {
+        id: 'geoscratchHelpfulAspects',
+        label:
+          'Which aspects of GeoScratch helped you understand the geometry concepts most, such as the 3D view, blocks, animations, guidance, or feedback? Please explain why and give a specific example.',
+      },
+      {
+        id: 'geoscratchImprovements',
+        label:
+          'What, if anything, could be improved in GeoScratch’s 3D view, blocks, animations, guidance, or feedback to better support your understanding of the geometry concepts?',
+      },
+      {
+        id: 'sectionCAdditional',
+        label: 'Is there anything you would like to add or explain further about your answers in this section?',
+      },
+    ],
+  },
+  {
+    title: 'Section D',
+    note: 'This section is evaluating GeoScratch.',
+    ratings: [
+      {
+        id: 'focusOnGeometryNotTool',
+        label:
+          'I was able to focus my mental effort on solving the geometry problem rather than figuring out how to use GeoScratch.',
+      },
+      {
+        id: 'tooMuchInformation',
+        label:
+          'Using GeoScratch required me to keep track of too much information at the same time.',
+      },
+    ],
+    choices: [
+      {
+        id: 'mostMentalEffort',
+        label: 'When using GeoScratch, what required the most mental effort?',
+        options: [
+          'Understanding how to use the GeoScratch interface',
+          'Solving the geometry problems',
+          'Both the interface and the geometry problems',
+          'Neither required much mental effort',
+        ],
+        detailLabel: 'Please explain your choice.',
+      },
+    ],
+  },
+  {
+    title: 'Section E',
+    note: 'This section is asking about your experience across the whole study.',
+    open: [
+      {
+        id: 'solutionChangeBetweenConditions',
+        label:
+          'Did the way you solved the geometry problems change between the first and second condition? Please give one specific example.',
+      },
+    ],
+    choices: [
+      {
+        id: 'geoscratchLearningRole',
+        label: 'Based on your experience, what role should GeoScratch have in learning 3D geometry?',
+        options: [
+          'It should replace traditional lecture materials.',
+          'It should be combined with traditional lecture materials.',
+          'It should not be used for learning these 3D geometry topics.',
+          'Other',
+        ],
+        specifyWhen: 'Other',
+        detailLabel: 'Please explain your choice.',
+      },
+      {
+        id: 'postStudyGeometryConfidence',
+        label: 'After completing the study, how confident do you feel about solving 3D geometry tasks?',
+        options: [
+          'Not confident',
+          'Slightly confident',
+          'Moderately confident',
+          'Very confident',
+          'Extremely confident',
+        ],
+        detailLabel:
+          'What influenced your confidence level? Please mention anything from GeoScratch, the traditional exercises, or your prior experience.',
+      },
+    ],
+  },
+]
+const POST_RATING_FIELDS = POST_STUDY_SECTIONS.flatMap((section) => section.ratings || [])
+const POST_CHOICE_FIELDS = POST_STUDY_SECTIONS.flatMap((section) => section.choices || [])
+const POST_OPEN_FIELDS = POST_STUDY_SECTIONS.flatMap((section) => section.open || [])
 
 const POINT_STYLES = {
   attached_corner_point: { color: '#3b82f6', label: 'P', anchor: 'p' },
@@ -333,6 +547,11 @@ function readAcceptConditionResponsesSetting() {
   return window.localStorage.getItem(CONDITION_RESPONSE_SETTING_KEY) === 'true'
 }
 
+function readAcceptPostResponsesSetting() {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(POST_RESPONSE_SETTING_KEY) === 'true'
+}
+
 function makeInitialAnswers(researchId = '') {
   return {
     researchId,
@@ -348,62 +567,101 @@ function makeInitialConditionAnswers(researchId = '') {
   }
 }
 
+function makeInitialPostAnswers(researchId = '') {
+  return {
+    researchId,
+    date: todayForDateInput(),
+  }
+}
+
 function safeFileSegment(value) {
   return value.trim().replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '') || 'anonymous'
 }
 
-function buildResponsePayload(answers, researchId) {
-  const submittedAt = new Date().toISOString()
-  const fields = QUESTIONNAIRE_FIELDS.map((field) => ({
+function fieldAnswer(field, answers, extra = {}) {
+  return {
     id: field.id,
     question: field.label,
     answer: answers[field.id] || null,
-    detail: answers[`${field.id}Detail`] || null,
-  }))
+    ...extra,
+  }
+}
+
+function fieldsToAnswers(fields) {
+  return Object.fromEntries(fields.map((field) => [field.id, field.answer]))
+}
+
+function buildResponsePayload(answers, researchId) {
+  const submittedAt = new Date().toISOString()
+  const fields = QUESTIONNAIRE_FIELDS.map((field) =>
+    fieldAnswer(field, answers, { detail: answers[`${field.id}Detail`] || null }),
+  )
 
   return {
     route: '/userstudy-Li',
     questionnaire: 'Pre-Study Questionnaire (Demographics)',
     submittedAt,
-    participantId: researchId || null,
     researchId: researchId || null,
     date: answers.date || null,
-    answers: Object.fromEntries(fields.map((field) => [field.id, field.answer])),
+    answers: fieldsToAnswers(fields),
     fields,
   }
 }
 
 function buildConditionResponsePayload(answers, researchId) {
   const submittedAt = new Date().toISOString()
-  const metaFields = CONDITION_META_FIELDS.map((field) => ({
-    id: field.id,
-    question: field.label,
-    answer: answers[field.id] || null,
-  }))
-  const ratingFields = CONDITION_RATING_FIELDS.map((field) => ({
-    id: field.id,
-    question: field.label,
-    scale: '1 = strongly disagree to 5 = strongly agree',
-    answer: answers[field.id] || null,
-  }))
-  const openFields = CONDITION_OPEN_FIELDS.map((field) => ({
-    id: field.id,
-    question: field.label,
-    answer: answers[field.id] || null,
-  }))
+  const metaFields = CONDITION_META_FIELDS.map((field) => fieldAnswer(field, answers))
+  const ratingFields = CONDITION_RATING_FIELDS.map((field) =>
+    fieldAnswer(field, answers, { scale: '1 = strongly disagree to 5 = strongly agree' }),
+  )
+  const openFields = CONDITION_OPEN_FIELDS.map((field) => fieldAnswer(field, answers))
   const fields = [...metaFields, ...ratingFields, ...openFields]
 
   return {
     route: '/userstudy-Li',
     questionnaire: 'Condition Questionnaire',
     submittedAt,
-    participantId: researchId || null,
     researchId: researchId || null,
     date: answers.date || null,
     conditionOrder: answers.conditionOrder || null,
     condition: answers.condition || null,
-    answers: Object.fromEntries(fields.map((field) => [field.id, field.answer])),
+    answers: fieldsToAnswers(fields),
     fields,
+  }
+}
+
+function buildPostResponsePayload(answers, researchId) {
+  const submittedAt = new Date().toISOString()
+  const sections = [
+    {
+      title: 'Post-Study Details',
+      fields: POST_META_FIELDS.map((field) => fieldAnswer(field, answers)),
+    },
+    ...POST_STUDY_SECTIONS.map((section) => ({
+      title: section.title,
+      note: section.note,
+      fields: [
+        ...(section.ratings || []).map((field) =>
+          fieldAnswer(field, answers, { scale: '1 = strongly disagree to 5 = strongly agree' }),
+        ),
+        ...(section.choices || []).map((field) =>
+          fieldAnswer(field, answers, { detail: answers[`${field.id}Detail`] || null }),
+        ),
+        ...(section.open || []).map((field) => fieldAnswer(field, answers)),
+      ],
+    })),
+  ]
+  const fields = sections.flatMap((section) => section.fields)
+
+  return {
+    route: '/userstudy-Li',
+    questionnaire: 'Post-Study Questionnaire',
+    submittedAt,
+    researchId: researchId || null,
+    date: answers.date || null,
+    conditionOrder: answers.conditionOrder || null,
+    sections,
+    answers: fieldsToAnswers(fields),
   }
 }
 
@@ -462,15 +720,19 @@ export default function UserStudyLiPage() {
   const [studyStarted, setStudyStarted] = useState(false)
   const [conditionStarted, setConditionStarted] = useState(false)
   const [conditionCompleted, setConditionCompleted] = useState(false)
+  const [postCompleted, setPostCompleted] = useState(false)
   const [researchId, setResearchId] = useState('')
   const [acceptResponses, setAcceptResponses] = useState(readAcceptResponsesSetting)
   const [acceptConditionResponses, setAcceptConditionResponses] = useState(
     readAcceptConditionResponsesSetting,
   )
+  const [acceptPostResponses, setAcceptPostResponses] = useState(readAcceptPostResponsesSetting)
   const [answers, setAnswers] = useState(makeInitialAnswers)
   const [conditionAnswers, setConditionAnswers] = useState(makeInitialConditionAnswers)
+  const [postAnswers, setPostAnswers] = useState(makeInitialPostAnswers)
   const [savedMessage, setSavedMessage] = useState('')
   const [conditionSavedMessage, setConditionSavedMessage] = useState('')
+  const [postSavedMessage, setPostSavedMessage] = useState('')
   const exercise = STUDY_EXERCISES[exerciseIndex]
   const exerciseId = exercise.id
 
@@ -479,13 +741,17 @@ export default function UserStudyLiPage() {
     setResearchId(nextResearchId)
     setAnswers(makeInitialAnswers(nextResearchId))
     setConditionAnswers(makeInitialConditionAnswers(nextResearchId))
+    setPostAnswers(makeInitialPostAnswers(nextResearchId))
     setExerciseIndex(0)
     setStudyStarted(false)
     setConditionStarted(false)
     setConditionCompleted(false)
+    setPostCompleted(false)
     setSessionStarted(true)
     window.localStorage.setItem(CURRENT_RESEARCH_ID_KEY, nextResearchId)
     setSavedMessage('')
+    setConditionSavedMessage('')
+    setPostSavedMessage('')
   }
 
   function updateAcceptResponses(checked) {
@@ -500,6 +766,12 @@ export default function UserStudyLiPage() {
     setConditionSavedMessage('')
   }
 
+  function updateAcceptPostResponses(checked) {
+    setAcceptPostResponses(checked)
+    window.localStorage.setItem(POST_RESPONSE_SETTING_KEY, checked ? 'true' : 'false')
+    setPostSavedMessage('')
+  }
+
   function updateAnswer(id, value) {
     setAnswers((current) => ({ ...current, [id]: value }))
     setSavedMessage('')
@@ -508,6 +780,11 @@ export default function UserStudyLiPage() {
   function updateConditionAnswer(id, value) {
     setConditionAnswers((current) => ({ ...current, [id]: value }))
     setConditionSavedMessage('')
+  }
+
+  function updatePostAnswer(id, value) {
+    setPostAnswers((current) => ({ ...current, [id]: value }))
+    setPostSavedMessage('')
   }
 
   function submitQuestionnaire(event) {
@@ -536,6 +813,19 @@ export default function UserStudyLiPage() {
     downloadJson(payload, 'condition')
     setConditionSavedMessage('Response saved as a JSON file. A browser backup was also stored locally.')
     setConditionCompleted(true)
+  }
+
+  function submitPostQuestionnaire(event) {
+    event.preventDefault()
+    if (!acceptPostResponses) return
+
+    const payload = buildPostResponsePayload(postAnswers, researchId)
+    const storedResponses = JSON.parse(window.localStorage.getItem(POST_RESPONSE_BACKUP_KEY) || '[]')
+    storedResponses.push(payload)
+    window.localStorage.setItem(POST_RESPONSE_BACKUP_KEY, JSON.stringify(storedResponses))
+    downloadJson(payload, 'post-study')
+    setPostSavedMessage('Response saved as a JSON file. A browser backup was also stored locally.')
+    setPostCompleted(true)
   }
 
   if (!sessionStarted) {
@@ -576,7 +866,7 @@ export default function UserStudyLiPage() {
           <section className="user-study-li-section">
             <div className="user-study-li-two-column user-study-li-session-fields">
               <label className="user-study-li-field">
-                <span>Participant ID</span>
+                <span>Research ID</span>
                 <input
                   value={researchId}
                   readOnly
@@ -790,7 +1080,170 @@ export default function UserStudyLiPage() {
     )
   }
 
-  if (conditionCompleted) {
+  if (conditionCompleted && !postCompleted) {
+    return (
+      <div className="user-study-li-form-page">
+        <header className="user-study-li-form-header">
+          <div>
+            <h1>Post-Study Questionnaire</h1>
+            <p>
+              To be completed after both conditions. Please answer based on your overall
+              experience across the whole study.
+            </p>
+          </div>
+          <label className="user-study-li-collection-toggle">
+            <span>
+              <strong>Accept responses</strong>
+              <small>{acceptPostResponses ? 'JSON saving is on' : 'Students can skip this form'}</small>
+            </span>
+            <Switch checked={acceptPostResponses} onCheckedChange={updateAcceptPostResponses} />
+          </label>
+        </header>
+
+        <form className="user-study-li-questionnaire" onSubmit={submitPostQuestionnaire}>
+          <section className="user-study-li-section">
+            <div className="user-study-li-two-column user-study-li-session-fields">
+              <label className="user-study-li-field">
+                <span>Research ID</span>
+                <input value={researchId} readOnly disabled={!acceptPostResponses} />
+              </label>
+              <label className="user-study-li-field">
+                <span>Date</span>
+                <input
+                  type="date"
+                  value={postAnswers.date}
+                  onChange={(event) => updatePostAnswer('date', event.target.value)}
+                  disabled={!acceptPostResponses}
+                />
+              </label>
+            </div>
+
+            {POST_META_FIELDS.map((field) => (
+              <fieldset className="user-study-li-question" key={field.id}>
+                <legend>{field.label}</legend>
+                <div className="user-study-li-options user-study-li-inline-options">
+                  {field.options.map((option) => (
+                    <label className="user-study-li-option" key={option}>
+                      <input
+                        type="radio"
+                        name={field.id}
+                        value={option}
+                        checked={postAnswers[field.id] === option}
+                        onChange={(event) => updatePostAnswer(field.id, event.target.value)}
+                        disabled={!acceptPostResponses}
+                      />
+                      <span>{option}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ))}
+          </section>
+
+          {POST_STUDY_SECTIONS.map((section) => (
+            <section className="user-study-li-section" key={section.title}>
+              <h2 className="user-study-li-section-title">{section.title}</h2>
+              <p className="user-study-li-section-note">{section.note}</p>
+
+              {(section.ratings || []).map((field) => (
+                <fieldset
+                  className="user-study-li-question user-study-li-rating-question"
+                  key={field.id}
+                >
+                  <legend>{field.label}</legend>
+                  <p>1 = strongly disagree to 5 = strongly agree</p>
+                  <div className="user-study-li-options user-study-li-rating-options">
+                    {LIKERT_OPTIONS.map((option) => (
+                      <label className="user-study-li-option" key={option}>
+                        <input
+                          type="radio"
+                          name={field.id}
+                          value={option}
+                          checked={postAnswers[field.id] === option}
+                          onChange={(event) => updatePostAnswer(field.id, event.target.value)}
+                          disabled={!acceptPostResponses}
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ))}
+
+              {(section.choices || []).map((field) => (
+                <fieldset className="user-study-li-question" key={field.id}>
+                  <legend>{field.label}</legend>
+                  <div className="user-study-li-options">
+                    {field.options.map((option) => (
+                      <label className="user-study-li-option" key={option}>
+                        <input
+                          type="radio"
+                          name={field.id}
+                          value={option}
+                          checked={postAnswers[field.id] === option}
+                          onChange={(event) => updatePostAnswer(field.id, event.target.value)}
+                          disabled={!acceptPostResponses}
+                        />
+                        <span>{option}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {field.detailLabel ? (
+                    <label className="user-study-li-field user-study-li-detail">
+                      <span>{field.detailLabel}</span>
+                      <textarea
+                        value={postAnswers[`${field.id}Detail`] || ''}
+                        onChange={(event) =>
+                          updatePostAnswer(`${field.id}Detail`, event.target.value)
+                        }
+                        disabled={!acceptPostResponses}
+                        rows={4}
+                      />
+                    </label>
+                  ) : null}
+                </fieldset>
+              ))}
+
+              {(section.open || []).map((field) => (
+                <label
+                  className="user-study-li-field user-study-li-open-question"
+                  key={field.id}
+                >
+                  <span>{field.label}</span>
+                  <textarea
+                    value={postAnswers[field.id] || ''}
+                    onChange={(event) => updatePostAnswer(field.id, event.target.value)}
+                    disabled={!acceptPostResponses}
+                    rows={5}
+                  />
+                </label>
+              ))}
+            </section>
+          ))}
+
+          <footer className="user-study-li-actions">
+            <button
+              className="user-study-li-secondary-action"
+              type="button"
+              onClick={() => setPostCompleted(true)}
+            >
+              Skip questionnaire
+            </button>
+            <button
+              className="user-study-li-primary-action"
+              type="submit"
+              disabled={!acceptPostResponses}
+            >
+              Save JSON and finish
+            </button>
+          </footer>
+          {postSavedMessage ? <p className="user-study-li-save-message">{postSavedMessage}</p> : null}
+        </form>
+      </div>
+    )
+  }
+
+  if (postCompleted) {
     return (
       <div className="user-study-li-form-page user-study-li-session-page">
         <section className="user-study-li-session-card" aria-labelledby="session-complete-title">
