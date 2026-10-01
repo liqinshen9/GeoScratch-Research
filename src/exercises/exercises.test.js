@@ -331,6 +331,7 @@ describe('Cube and corner point pivot rotation exercise', () => {
       cube: true,
       point: true,
       pair: true,
+      cleanup: true,
       pipeline: true,
       toOrigin: true,
       rotate: true,
@@ -504,6 +505,36 @@ describe('exercise 5 (point to plane)', () => {
 
   it('does not complete step 5 when the normal starts at a different point', () => {
     expect(stepFive({ enteredQ: [2.25, -1.5, 4] }).steps.normalFromQ).toBe(false)
+  })
+
+  it('adds a perpendicular marker to the long study normal glyph', () => {
+    const hadWindow = Object.hasOwn(globalThis, 'window')
+    if (!hadWindow) globalThis.window = {}
+    const previousRuntimeMode = window.__geoScratchRuntimeMode
+    const previousColors = window.GeoScratchColors
+    const previousStore = window.threeObjStore
+    window.__geoScratchRuntimeMode = 'userstudy-Li-ABC123-point-plane-distance'
+    window.GeoScratchColors = { forRole: () => '#ef4444' }
+    window.threeObjStore = {}
+
+    const normal = normalFrom(point(2.25, -1.5, 3.7504))
+    const workspace = fakeWorkspace([normal])
+    const normalObject = new THREE.Group()
+    normalObject.userData = { srcBlockId: normal.id }
+    const decorated = mod.decorateObjects([normalObject], workspace)
+    let hasRightAngle = false
+    decorated[0].traverse((child) => {
+      if (child.userData?.geoType === 'normal_plane_right_angle') hasRightAngle = true
+    })
+
+    expect(decorated[0]).not.toBe(normalObject)
+    expect(decorated[0].userData.geoType).toBe('distance_normal_arrow')
+    expect(hasRightAngle).toBe(true)
+
+    window.__geoScratchRuntimeMode = previousRuntimeMode
+    window.GeoScratchColors = previousColors
+    window.threeObjStore = previousStore
+    if (!hadWindow) delete globalThis.window
   })
 
   it('offers a reusable block template', () => {

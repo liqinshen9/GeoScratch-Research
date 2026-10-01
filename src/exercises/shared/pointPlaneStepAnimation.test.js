@@ -57,6 +57,8 @@ describe('point-plane step animation', () => {
     normal.userData.vectorLength = 12
     normal.userData.vectorOrigin = new THREE.Vector3(2, 3, 4)
     normal.userData.setVectorLength = vi.fn()
+    const normalRightAngle = sceneObject(null, 'normal_plane_right_angle')
+    normal.add(normalRightAngle)
     const projection = sceneObject('projection')
     const magnitude = sceneObject('magnitude')
     magnitude.userData.labelAnchors = { distanceMid: { position: [0, 0, 0] } }
@@ -85,15 +87,13 @@ describe('point-plane step animation', () => {
     expect(workspace.highlightBlock).toHaveBeenCalledWith('plane-normal-input', true)
     expect(pointP.visible).toBe(false)
     expect(qMarker.visible).toBe(false)
-    expect(planeDefinition.visible).toBe(true)
-    expect(plane.userData.labels[0].name).toBe('A')
-    expect(plane.userData.labels[0].value).toBe('(-5, 0, 2)')
-    expect(plane.userData.labels[0].revealed()).toBe(true)
+    expect(planeDefinition.visible).toBe(false)
+    expect(plane.userData.labels[0].revealed()).toBe(false)
 
     target.userData.animateSteps(atConstructionStage(1, 0.2))
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith('point-p')
     expect(pointP.visible).toBe(true)
-    expect(planeDefinition.visible).toBe(true)
+    expect(planeDefinition.visible).toBe(false)
 
     target.userData.animateSteps(atConstructionStage(2, 0.01))
     expect(planeDefinition.visible).toBe(false)
@@ -106,6 +106,7 @@ describe('point-plane step animation', () => {
     target.userData.animateSteps(atConstructionStage(3, 0.22))
     expect(workspace.highlightBlock).toHaveBeenLastCalledWith('normal-from-q')
     expect(normal.visible).toBe(true)
+    expect(normalRightAngle.visible).toBe(true)
     expect(normal.userData.setVectorLength.mock.calls.at(-1)[0]).toBeCloseTo(12 * 0.22)
     expect(difference.visible).toBe(false)
 

@@ -1,5 +1,5 @@
 import THREE from '@/utils/three'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { createVectorNotationRuntime } from '@/utils/vectorNotation'
 import { createPointMarker } from '@/utils/pointMarker'
@@ -34,6 +34,14 @@ const POINT_P_COLOR_SEED = 'exercise:point-plane-distance:P'
 const POINT_MARKER_FALLBACK_COLOR = '#94a3b8'
 
 const vectorNotation = createVectorNotationRuntime()
+
+function isUserStudyLiPointPlaneRuntime() {
+  const runtimeMode = String(window.__geoScratchRuntimeMode || '')
+  return (
+    runtimeMode === 'userstudy-Li-point-plane-distance' ||
+    (runtimeMode.startsWith('userstudy-Li-') && runtimeMode.endsWith('-point-plane-distance'))
+  )
+}
 
 // The worked solution, loaded by the dev-only "Fill solution" control. Kept
 // beside the checker so a change to what counts as correct is made next to the
@@ -275,8 +283,35 @@ function normalStartsAtRecordedQ(objects, workspace) {
   return Boolean(qPoint?.isVector3 && vectorMatches(enteredPoint, qPoint, 0.001))
 }
 
+function buildNormalPlaneRightAngle(origin, normal, color, size = 0.38) {
+  const normalUnit =
+    normal?.lengthSq?.() > 1e-12 ? normal.clone().normalize() : new THREE.Vector3(0, 1, 0)
+  const tangent =
+    Math.abs(normalUnit.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)
+  tangent.addScaledVector(normalUnit, -tangent.dot(normalUnit))
+  if (tangent.lengthSq() < 1e-10) tangent.set(0, 0, 1)
+  tangent.normalize()
+
+  const marker = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      origin.clone().addScaledVector(normalUnit, size),
+      origin.clone().addScaledVector(normalUnit, size).addScaledVector(tangent, size),
+      origin.clone().addScaledVector(tangent, size),
+    ]),
+    new THREE.LineBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false,
+    }),
+  )
+  marker.renderOrder = 22
+  marker.userData.geoType = 'normal_plane_right_angle'
+  return marker
+}
+
 function replaceStudyNormalGlyph(objects, workspace) {
-  if (window.__geoScratchRuntimeMode !== 'userstudy-Li-point-plane-distance') return objects
+  if (!isUserStudyLiPointPlaneRuntime()) return objects
 
   const normalBlock = findNormalFromQBlock(workspace)
   const objectIndex = objects.findIndex(
@@ -294,6 +329,9 @@ function replaceStudyNormalGlyph(objects, workspace) {
     length: Math.max(8, CORRECT_DISTANCE + 5),
     color,
   })
+  const rightAngle = buildNormalPlaneRightAngle(origin, normal, color)
+  rightAngle.userData.srcBlockId = normalBlock.id
+  glyph.add(rightAngle)
   glyph.userData.labelAnchors = { normal: { type: 'world', position: tip.toArray() } }
   glyph.userData.labels = [
     { anchor: 'normal', text: 'n', distanceFactor: 8, offset: [0.12, 0.12, 0], color },
@@ -406,6 +444,38 @@ function hasProjectionDistanceBlock(workspace) {
   })
 }
 
+function hasAnyBlockOfType(workspace, type) {
+  return Boolean(workspace?.getBlocksByType(type, false).length)
+}
+
+function hasAnyPointOrVectorBlock(workspace) {
+  return POINT_VECTOR_BLOCK_TYPES.some((type) => hasAnyBlockOfType(workspace, type))
+}
+
+function hasAnyPointOnObjectBlock(workspace) {
+  return hasAnyBlockOfType(workspace, 'geo_show_point_on_object')
+}
+
+function hasAnyPointDifferenceAttempt(workspace) {
+  return Boolean(
+    workspace
+      ?.getBlocksByType('vector_arithmetic', false)
+      .some((block) => block.getFieldValue('OP') === 'subtract'),
+  )
+}
+
+function hasAnyNormalVectorAttempt(workspace) {
+  return Boolean(workspace?.getBlocksByType('linalg_vec3', false).some(isNormalVectorBlock))
+}
+
+function hasAnyProjectionAttempt(workspace) {
+  return hasAnyBlockOfType(workspace, 'vector_project')
+}
+
+function hasAnyMagnitudeAttempt(workspace) {
+  return hasAnyBlockOfType(workspace, 'vector_magnitude')
+}
+
 // Projection only. The dot product of (P - Q) and n equals the distance just
 // when |n| = 1, and this plane's normal is (0.5, 1, 0.5), so |n| is sqrt(1.5).
 // A student taking that route would read 8.5 instead of 6.94, fail the value
@@ -430,27 +500,79 @@ function Givens() {
   )
 }
 
-function Steps({ steps, passed }) {
+function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed }) {
+  const [checkedSteps, setCheckedSteps] = useState({})
+  const pendingCheckRef = useRef(0)
+
+  useEffect(() => {
+    setCheckedSteps({})
+  }, [feedbackRevision])
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(pendingCheckRef.current)
+    },
+    [],
+  )
+
+  const checkStep = (key) => {
+    window.clearTimeout(pendingCheckRef.current)
+    pendingCheckRef.current = window.setTimeout(() => {
+      setCheckedSteps((checked) => ({ ...checked, [key]: true }))
+    }, 100)
+  }
+
+  const tasks = [
+    ['plane', 'Create: a plane using point A = (-5, 0, 2) and normal n = (0.5, 1, 0.5).'],
+    ['pointP', 'Create: Point P = (-9, 8, 7).'],
+    [
+      'pointQ',
+      'Create: any point Q1 on the plane. Left-click Q1 in the 3D view and note its coordinates.',
+    ],
+    ['difference', 'Compute: P - Q1 with the Vector Arithmetic block.'],
+    [
+      'normalFromQ',
+      'Create: Point Q1 with the coordinates you noted, then create the normal n = (0.5, 1, 0.5) from that point.',
+    ],
+    ['projection', 'Project: P - Q1 onto n with the Vector Project block.'],
+    [
+      'distance',
+      'Compute: the Vector Magnitude of that projection. This is the distance from P to the plane.',
+    ],
+  ]
+
   return (
     <ol className={`exercise-task-steps${passed ? ' is-passed' : ''}`}>
-      <li className={steps.plane ? 'is-complete' : ''}>Create: plane</li>
-      <li className={steps.pointP ? 'is-complete' : ''}>Create: Point P</li>
-      <li className={steps.pointQ ? 'is-complete' : ''}>
-        Create: any point Q1 on the plane. Left-click Q1 in the 3D view and note its coordinates.
-      </li>
-      <li className={steps.difference ? 'is-complete' : ''}>
-        Compute: P - Q with the Vector Arithmetic block.
-      </li>
-      <li className={steps.normalFromQ ? 'is-complete' : ''}>
-        Create: Point Q1 with the coordinates you noted, then create the normal n = (0.5, 1, 0.5)
-        from that point.
-      </li>
-      <li className={steps.projection ? 'is-complete' : ''}>
-        Project: P - Q onto n with the Vector Project block.
-      </li>
-      <li className={steps.distance ? 'is-complete' : ''}>
-        Compute: the Vector Magnitude of that projection. This is the distance from P to the plane.
-      </li>
+      {tasks.map(([key, text]) => {
+        const wasChecked = checkedSteps[key]
+        const showValueFeedback = wasChecked && !steps[key] && partialSteps?.[key]
+        const showIncompleteFeedback = wasChecked && !steps[key] && !partialSteps?.[key]
+        return (
+          <li key={key} className={steps[key] ? 'is-complete' : wasChecked ? 'is-partial' : ''}>
+            <div className="exercise-step-row">
+              <span>{text}</span>
+              <button
+                type="button"
+                className="exercise-step-check"
+                data-complete={steps[key] ? 'true' : undefined}
+                onClick={() => checkStep(key)}
+              >
+                {steps[key] ? 'Complete' : 'Check'}
+              </button>
+            </div>
+            {showValueFeedback && (
+              <span className="exercise-step-feedback" role="status">
+                {partialMessages?.[key] || 'One of the values or connections is not correct yet.'}
+              </span>
+            )}
+            {showIncompleteFeedback && (
+              <span className="exercise-step-feedback" role="status">
+                This step is not complete yet.
+              </span>
+            )}
+          </li>
+        )
+      })}
     </ol>
   )
 }
@@ -483,6 +605,36 @@ function evaluate({ objects, workspace }) {
 
   const hasPointP = workspaceHasPointPVector(workspace)
   const hasPointQ = hasPointQOnExercisePlane(objects)
+  const steps = {
+    plane: hasExercisePlane(objects),
+    pointP: hasPointP,
+    pointQ: hasPointQ,
+    difference: hasPointP && hasPointQ && hasPointDifferenceBlock(workspace),
+    normalFromQ: normalFromRecordedQ,
+    // The projection ticks on its own, before the magnitude finishes the job.
+    projection: hasProjectionOntoNormalBlock(workspace),
+    distance: passed,
+  }
+  const partialSteps = {
+    plane: !steps.plane && hasAnyBlockOfType(workspace, 'parametric_plane'),
+    pointP: !steps.pointP && hasAnyPointOrVectorBlock(workspace),
+    pointQ: !steps.pointQ && hasAnyPointOnObjectBlock(workspace),
+    difference: !steps.difference && hasAnyPointDifferenceAttempt(workspace),
+    normalFromQ: !steps.normalFromQ && hasAnyNormalVectorAttempt(workspace),
+    projection: !steps.projection && hasAnyProjectionAttempt(workspace),
+    distance: !steps.distance && (hasAnyMagnitudeAttempt(workspace) || distance !== null),
+  }
+  const partialMessages = {
+    plane: 'Check that the plane uses point A = (-5, 0, 2) and normal n = (0.5, 1, 0.5).',
+    pointP: 'Check that Point P has coordinates (-9, 8, 7).',
+    pointQ: 'Use the Show Point on Object block connected to the exercise plane.',
+    difference: 'Use subtraction with P first and Q1 second: P - Q1.',
+    normalFromQ:
+      'Look at the coordinate of Q1 in the 3D view. The normal n should start from that point.',
+    projection: 'Project P - Q1 as u onto the normal n as v.',
+    distance:
+      'Connect that projection into Vector Magnitude. The computed distance should be about 6.94.',
+  }
 
   return {
     passed,
@@ -493,16 +645,9 @@ function evaluate({ objects, workspace }) {
     incorrect: distance !== null && !distanceIsCorrect,
     target,
     answer: { type: 'distance', value: distance },
-    steps: {
-      plane: hasExercisePlane(objects),
-      pointP: hasPointP,
-      pointQ: hasPointQ,
-      difference: hasPointP && hasPointQ && hasPointDifferenceBlock(workspace),
-      normalFromQ: normalFromRecordedQ,
-      // The projection ticks on its own, before the magnitude finishes the job.
-      projection: hasProjectionOntoNormalBlock(workspace),
-      distance: passed,
-    },
+    steps,
+    partialSteps,
+    partialMessages,
   }
 }
 

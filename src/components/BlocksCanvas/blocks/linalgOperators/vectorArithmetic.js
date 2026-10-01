@@ -196,8 +196,13 @@ export function initVectorArithmeticBlock() {
     );
     const pointLabel = vVal.userData?.label || 'Q';
     const pointDifferenceLabel = vectorNotation.binaryLabel(uVal, '-', vVal, 'P', pointLabel);
+    const isUserStudyLiPointPlaneRuntime = (() => {
+      const runtimeMode = String(window.__geoScratchRuntimeMode || '');
+      return runtimeMode === 'userstudy-Li-point-plane-distance' ||
+        (runtimeMode.startsWith('userstudy-Li-') && runtimeMode.endsWith('-point-plane-distance'));
+    })();
     const pointDifferenceDisplayLabel =
-      window.__geoScratchRuntimeMode === 'userstudy-Li-point-plane-distance'
+      isUserStudyLiPointPlaneRuntime
         ? 'P-' + pointLabel.split(' ').join('')
         : pointDifferenceLabel;
     // Name the result by its expression ("a + b"), never a generic "result" --
@@ -282,7 +287,7 @@ export function initVectorArithmeticBlock() {
       ? [{ anchor:'negTip', name: '\u2212' + vLabel, value: fmt(vVal.clone().negate()), distanceFactor:8, offset:[0.12,0.12,0], color: operandBColor, revealed: () => negatedV.visible === true && !negatedV.userData.fadingOut }]
       : [];
     group.userData.labels = isPointDifference
-      ? window.__geoScratchRuntimeMode === 'userstudy-Li-point-plane-distance'
+      ? isUserStudyLiPointPlaneRuntime
         ? [
           { anchor:'rTip', text: pointDifferenceDisplayLabel, distanceFactor:8, offset:[0.12,0.12,0], color: resultColor, revealed: shownWith(resObj) },
         ]
