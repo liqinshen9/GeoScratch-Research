@@ -8,6 +8,7 @@ import exercise07 from './exercise07-spheres'
 import exercise08 from './exercise08-closerObject'
 import exercise09 from './exercise09-lineInFront'
 import exercise10 from './exercise10-cubePointPivot'
+import exercise11 from './exercise11-userStudyLiPointPlaneEquation'
 
 /**
  * One module per exercise, keyed by the slug id in its URL (/exercise/:id) and
@@ -68,6 +69,7 @@ export const EXERCISE_MODULES = {
   'sphere-distance': exercise07,
   'closer-object': exercise08,
   'line-in-front': exercise09,
+  'userstudy-li-equation-point-plane-distance': exercise11,
 }
 
 export const FALLBACK_EXERCISE_ID = 'scale-object'
@@ -75,4 +77,8 @@ export const FALLBACK_EXERCISE_ID = 'scale-object'
 /** The module for an exercise id, falling back to the first exercise. */
 export function getExerciseModule(id) {
   return EXERCISE_MODULES[id] || EXERCISE_MODULES[FALLBACK_EXERCISE_ID]
+}
+
+export function hasExerciseModule(id) {
+  return Boolean(EXERCISE_MODULES[id])
 }

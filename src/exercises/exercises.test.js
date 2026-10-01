@@ -542,6 +542,60 @@ describe('exercise 5 (point to plane)', () => {
   })
 })
 
+describe('UserStudyLi point-plane equation exercise', () => {
+  const mod = EXERCISE_MODULES['userstudy-li-equation-point-plane-distance']
+
+  function planeFrom(planePoint) {
+    return fakeBlock(
+      'parametric_plane',
+      {},
+      {
+        point: point(...planePoint),
+        norm: vec3(1, 1, 2),
+      },
+    )
+  }
+
+  function planeObject(planePoint) {
+    const object = new THREE.Group()
+    object.userData = {
+      geoType: 'point_normal_plane_group',
+      point: new THREE.Vector3(...planePoint),
+      normalRaw: new THREE.Vector3(1, 1, 2),
+    }
+    return object
+  }
+
+  it('accepts any point that satisfies x + y + 2z = 3 for the plane', () => {
+    const firstPlane = planeFrom([3, 0, 0])
+    const secondPlane = planeFrom([0, 1, 1])
+
+    expect(
+      mod.evaluate({
+        objects: [planeObject([3, 0, 0])],
+        workspace: fakeWorkspace([firstPlane]),
+      }).steps.plane,
+    ).toBe(true)
+    expect(
+      mod.evaluate({
+        objects: [planeObject([0, 1, 1])],
+        workspace: fakeWorkspace([secondPlane]),
+      }).steps.plane,
+    ).toBe(true)
+  })
+
+  it('rejects a plane point that is not on x + y + 2z = 3', () => {
+    const wrongPlane = planeFrom([0, 0, 0])
+
+    expect(
+      mod.evaluate({
+        objects: [planeObject([0, 0, 0])],
+        workspace: fakeWorkspace([wrongPlane]),
+      }).steps.plane,
+    ).toBe(false)
+  })
+})
+
 describe('exercise 6 (skew lines)', () => {
   const mod = EXERCISE_MODULES['skew-lines-distance']
 

@@ -5,7 +5,14 @@ import { Switch } from '@/components/ui/switch'
 import { generateResearchId } from '@/study/session/researchId'
 import './UserStudyLiPage.css'
 
-const STUDY_EXERCISES = ['cube-point-pivot-rotation', 'point-plane-distance']
+const STUDY_EXERCISES = [
+  { id: 'cube-point-pivot-rotation' },
+  { id: 'point-plane-distance', title: 'Calculate distance from point P to a plane 1' },
+  {
+    id: 'userstudy-li-equation-point-plane-distance',
+    title: 'Calculate distance from point P to a plane 2',
+  },
+]
 const RESPONSE_SETTING_KEY = 'userstudyLi.acceptResponses'
 const RESPONSE_BACKUP_KEY = 'userstudyLi.demographicsResponses'
 const CURRENT_RESEARCH_ID_KEY = 'userstudyLi.currentResearchId'
@@ -302,7 +309,8 @@ export default function UserStudyLiPage() {
   const [acceptResponses, setAcceptResponses] = useState(readAcceptResponsesSetting)
   const [answers, setAnswers] = useState(makeInitialAnswers)
   const [savedMessage, setSavedMessage] = useState('')
-  const exerciseId = STUDY_EXERCISES[exerciseIndex]
+  const exercise = STUDY_EXERCISES[exerciseIndex]
+  const exerciseId = exercise.id
 
   function startNewSession() {
     const nextResearchId = generateResearchId()
@@ -456,6 +464,7 @@ export default function UserStudyLiPage() {
         <ExercisePage
           key={exerciseId}
           exerciseId={exerciseId}
+          exerciseTitle={exercise.title}
           standalone
           workspaceId={`userstudy-Li-${researchId || 'no-session'}-${exerciseId}`}
           settingsOverrides={SETTINGS}

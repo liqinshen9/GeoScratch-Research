@@ -15,7 +15,7 @@ import {
   getAdjacentExercises,
   getSectionForExercise,
 } from '@/data/exercises'
-import { getExerciseModule } from '@/exercises'
+import { getExerciseModule, hasExerciseModule } from '@/exercises'
 import PerceptualQuestion from '@/exercises/shared/PerceptualQuestion'
 import { fillSolution } from '@/exercises/shared/fillSolution'
 import useExerciseTracking from '@/hooks/useExerciseTracking'
@@ -83,6 +83,7 @@ function AnswerCard({ result, className }) {
 
 export default function ExercisePage({
   exerciseId: fixedExerciseId,
+  exerciseTitle,
   standalone = false,
   workspaceId,
   settingsOverrides,
@@ -112,7 +113,22 @@ export default function ExercisePage({
 
   // The URL is the source of truth for which exercise is open;
   // /exercise with no param (or an unknown id) defaults to the first one.
-  const activeExerciseConfig = getExercise(fixedExerciseId ?? routeExerciseId) ?? orderedExercises()[0]
+  const requestedExerciseId = fixedExerciseId ?? routeExerciseId
+  const registeredExercise = getExercise(requestedExerciseId)
+  const routeOnlyExercise = hasExerciseModule(requestedExerciseId)
+    ? getExerciseModule(requestedExerciseId)
+    : null
+  const baseExerciseConfig = registeredExercise ??
+    (routeOnlyExercise
+      ? {
+          id: routeOnlyExercise.id,
+          title: routeOnlyExercise.title,
+          difficulty: null,
+        }
+      : orderedExercises()[0])
+  const activeExerciseConfig = exerciseTitle
+    ? { ...baseExerciseConfig, title: exerciseTitle }
+    : baseExerciseConfig
   const activeExercise = activeExerciseConfig.id
   const exercise = getExerciseModule(activeExercise)
 
