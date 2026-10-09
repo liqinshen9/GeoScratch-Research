@@ -143,6 +143,8 @@ function Scene({ objects = [], hiddenLabelKeys, controlsRef, onHideLabel, theme,
           length={20}
           showOriginLabel={settings.showOriginLabel}
           showScaleLabels={settings.showAxisScaleLabels}
+          objects={objects}
+          showObjectCoordinates={settings.showObjectAxisCoordinates}
           showEndLabels={!settings.showAxisGizmo}
           theme={theme}
         />

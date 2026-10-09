@@ -307,6 +307,24 @@ describe('exercise 3 (scale 2 and rotate 45 about Y)', () => {
 
 describe('Cube and corner point pivot rotation exercise', () => {
   const mod = EXERCISE_MODULES['cube-point-pivot-rotation']
+  it('replaces standalone and grouped cube labels while preserving the corner point label', () => {
+    const cube = new THREE.Object3D()
+    cube.userData = { geoType: 'geo_cube', labels: [{ name: 'c1', value: 'side 2' }] }
+    const group = new THREE.Group()
+    const nestedCube = cube.clone()
+    const point = new THREE.Object3D()
+    point.userData.labels = [{ name: 'P', value: '(0, 2, 2)' }]
+    group.add(nestedCube, point)
+
+    mod.decorateObjects([cube, group], fakeWorkspace([]))
+
+    expect(cube.userData.labels).toEqual([])
+    expect(nestedCube.userData.labels).toEqual([])
+    expect(point.userData.labels).toEqual([{ name: 'P', value: '(0, 2, 2)' }])
+    expect(mod.settingsOverrides.showObjectAxisCoordinates).toBe(true)
+    expect(mod.settingsOverrides.showAxes).toBe(true)
+    expect(mod.settingsOverrides.showAxisScaleLabels).toBe(true)
+  })
   const posed = () =>
     posedCubeWithPoint({
       quaternion: quatAbout(new THREE.Vector3(0, 1, 0), 90),
@@ -539,60 +557,6 @@ describe('exercise 5 (point to plane)', () => {
 
   it('offers a reusable block template', () => {
     expect(mod.reusableBlockTemplate.xmlText).toContain('point_plane_distance')
-  })
-})
-
-describe('UserStudyLi point-plane equation exercise', () => {
-  const mod = EXERCISE_MODULES['userstudy-li-equation-point-plane-distance']
-
-  function planeFrom(planePoint) {
-    return fakeBlock(
-      'parametric_plane',
-      {},
-      {
-        point: point(...planePoint),
-        norm: vec3(1, 1, 2),
-      },
-    )
-  }
-
-  function planeObject(planePoint) {
-    const object = new THREE.Group()
-    object.userData = {
-      geoType: 'point_normal_plane_group',
-      point: new THREE.Vector3(...planePoint),
-      normalRaw: new THREE.Vector3(1, 1, 2),
-    }
-    return object
-  }
-
-  it('accepts any point that satisfies x + y + 2z = 3 for the plane', () => {
-    const firstPlane = planeFrom([3, 0, 0])
-    const secondPlane = planeFrom([0, 1, 1])
-
-    expect(
-      mod.evaluate({
-        objects: [planeObject([3, 0, 0])],
-        workspace: fakeWorkspace([firstPlane]),
-      }).steps.plane,
-    ).toBe(true)
-    expect(
-      mod.evaluate({
-        objects: [planeObject([0, 1, 1])],
-        workspace: fakeWorkspace([secondPlane]),
-      }).steps.plane,
-    ).toBe(true)
-  })
-
-  it('rejects a plane point that is not on x + y + 2z = 3', () => {
-    const wrongPlane = planeFrom([0, 0, 0])
-
-    expect(
-      mod.evaluate({
-        objects: [planeObject([0, 0, 0])],
-        workspace: fakeWorkspace([wrongPlane]),
-      }).steps.plane,
-    ).toBe(false)
   })
 })
 

@@ -81,8 +81,6 @@
 .exercise-page--editor[data-exercise-id='cube-point-pivot-rotation']
   .blocklyHighlighted > .blocklyPath,
 .exercise-page--editor[data-exercise-id='point-plane-distance']
-  .blocklyHighlighted > .blocklyPath,
-.exercise-page--editor[data-exercise-id='userstudy-li-equation-point-plane-distance']
   .blocklyHighlighted > .blocklyPath {
   fill: #facc15 !important;
   stroke: #eab308 !important;

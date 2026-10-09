@@ -1,7 +1,8 @@
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Text, Billboard } from '@react-three/drei'
 import THREE from '@/utils/three'
+import { getAxisCoordinates } from './axisCoordinates'
 import {
   AXIS_COLORS,
   AXIS_SHAFT_RADIUS,
@@ -18,6 +19,41 @@ const ROOM_COLORS = {
 const GRID_COLORS = {
   light: { center: 0xb0b0b0, line: 0xd2d2d2 },
   dark: { center: 0x405267, line: 0x2b3b4c },
+}
+
+const EMPTY_TICKS = []
+
+function AxisTick({ ring, position, value, color, toggleable, showLabel }) {
+  const [labelVisible, setLabelVisible] = useState(true)
+  const toggleLabel = toggleable ? (event) => {
+    event.stopPropagation()
+    setLabelVisible((visible) => !visible)
+  } : undefined
+  return (
+    <group>
+      <primitive object={ring} onClick={toggleLabel} />
+      {toggleable && (
+        <mesh position={ring.position.toArray()} onClick={toggleLabel}>
+          <sphereGeometry args={[0.085, 12, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} />
+        </mesh>
+      )}
+      {showLabel && labelVisible && (
+    <Billboard position={position.toArray()}>
+      <Text
+        fontSize={toggleable ? 0.18 : 0.3}
+        color={color}
+        fillOpacity={toggleable ? 0.9 : 0.75}
+        anchorX="center"
+        anchorY="middle"
+        onClick={toggleLabel}
+      >
+        {value}
+      </Text>
+    </Billboard>
+      )}
+    </group>
+  )
 }
 
 // BackSide walls cull the near ones. An edge hides only when BOTH its faces
@@ -183,39 +219,40 @@ function AxisTicks({
   length = 3,
   step = 5,
   showLabels = true,
+  extraTicks = EMPTY_TICKS,
+  exteriorLabels = false,
 }) {
-  const { ticksGroup, labelPositions } = useMemo(() => {
+  const labelPositions = useMemo(() => {
     const direction = new THREE.Vector3(...dir).normalize()
-    const perpOffset = dir[0] ? new THREE.Vector3(0, 0, 0.3) : new THREE.Vector3(0.3, 0, 0)
-    const group = new THREE.Group()
+    // Labels belong to the axis tick, not the cube's bounding box. Keep
+    // their fixed offset small, regardless of cube size or camera angle.
+    const perpOffset = exteriorLabels
+      ? new THREE.Vector3(dir[0] ? 0 : -0.08, dir[1] ? 0 : -0.08, dir[2] ? 0 : -0.08)
+      : dir[0] ? new THREE.Vector3(0, 0, 0.3) : new THREE.Vector3(0.3, 0, 0)
     const material = new THREE.MeshStandardMaterial({ color, roughness: 0.3, metalness: 0.2 })
     const ringGeom = new THREE.TorusGeometry(0.05, 0.007, 8, 20)
     const positions = []
 
+    const values = new Set(extraTicks.filter((t) => Number.isFinite(t) && t !== 0 && Math.abs(t) <= length))
     for (let t = step; t <= length; t += step) {
-      for (const sign of [1, -1]) {
-        const at = t * sign
-        const ring = new THREE.Mesh(ringGeom, material)
-        ring.position.copy(direction).multiplyScalar(at)
-        ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction)
-        group.add(ring)
-        positions.push({ t: at, pos: direction.clone().multiplyScalar(at).add(perpOffset) })
-      }
+      values.add(t)
+      values.add(-t)
+    }
+    for (const at of values) {
+      const ring = new THREE.Mesh(ringGeom, material)
+      ring.position.copy(direction).multiplyScalar(at)
+      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction)
+      const labelAt = exteriorLabels ? at + Math.sign(at) * 0.16 : at
+      positions.push({ t: at, ring, pos: direction.clone().multiplyScalar(labelAt).add(perpOffset) })
     }
 
-    return { ticksGroup: group, labelPositions: positions }
-  }, [dir, color, length, step])
+    return positions
+  }, [dir, color, length, step, extraTicks, exteriorLabels])
 
   return (
     <group>
-      <primitive object={ticksGroup} />
-      {showLabels &&
-        labelPositions.map(({ t, pos }) => (
-          <Billboard key={t} position={[pos.x, pos.y, pos.z]}>
-            <Text fontSize={0.3} color={color} fillOpacity={0.75} anchorX="center" anchorY="middle">
-              {t}
-            </Text>
-          </Billboard>
+      {labelPositions.map(({ t, pos, ring }) => (
+          <AxisTick key={exteriorLabels ? 'coordinate' : t} ring={ring} position={pos} value={t} color={color} toggleable={exteriorLabels} showLabel={showLabels} />
         ))}
     </group>
   )
@@ -244,11 +281,24 @@ function Axes({
   length = 3,
   showTicks = true,
   tickStep = 5,
+  objects = EMPTY_TICKS,
+  showObjectCoordinates = false,
   showOriginLabel = false,
   showScaleLabels = true,
   showEndLabels = true,
   theme = 'light',
 }) {
+  const [coordinates, setCoordinates] = useState(() => getAxisCoordinates(objects))
+  const coordinateKey = useRef('')
+  useFrame(() => {
+    if (!showObjectCoordinates) return
+    const next = getAxisCoordinates(objects)
+    const key = JSON.stringify(next)
+    if (key !== coordinateKey.current) {
+      coordinateKey.current = key
+      setCoordinates(next)
+    }
+  })
   const axisColors = getAxisColors(theme)
   const tickColor = getTickColor(theme)
   return (
@@ -281,21 +331,27 @@ function Axes({
             dir={[1, 0, 0]}
             color={axisColors.x}
             length={length}
-            step={tickStep}
+            step={showObjectCoordinates ? length + 1 : tickStep}
+            extraTicks={showObjectCoordinates ? coordinates.x : EMPTY_TICKS}
+            exteriorLabels={showObjectCoordinates}
             showLabels={showScaleLabels}
           />
           <AxisTicks
             dir={[0, 1, 0]}
             color={axisColors.y}
             length={length}
-            step={tickStep}
+            step={showObjectCoordinates ? length + 1 : tickStep}
+            extraTicks={showObjectCoordinates ? coordinates.y : EMPTY_TICKS}
+            exteriorLabels={showObjectCoordinates}
             showLabels={showScaleLabels}
           />
           <AxisTicks
             dir={[0, 0, 1]}
             color={axisColors.z}
             length={length}
-            step={tickStep}
+            step={showObjectCoordinates ? length + 1 : tickStep}
+            extraTicks={showObjectCoordinates ? coordinates.z : EMPTY_TICKS}
+            exteriorLabels={showObjectCoordinates}
             showLabels={showScaleLabels}
           />
         </>

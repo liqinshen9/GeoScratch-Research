@@ -164,6 +164,11 @@ function getReusableBlockTemplate({ workspace }) {
   }
 }
 function decorateObjects(objects, workspace) {
+  for (const object of objects) {
+    object.traverse((child) => {
+      if (child.userData?.geoType === 'geo_cube') child.userData.labels = []
+    })
+  }
   for (const pipeline of workspace?.getBlocksByType('transform_pipeline', false) ?? []) {
     const input = getInputBlock(pipeline, 'INPUT')
     if (input?.type !== 'geo_special_cube') continue
@@ -209,6 +214,9 @@ function AnimationButton({ objects, workspace }) {
 }
 export default { id: 'cube-point-pivot-rotation', kind: 'transform', hideAnswerCard: true, Givens, Steps, evaluate, solutionXml, getReusableBlockTemplate, decorateObjects, AnimationButton, settingsOverrides: {
   cubeShowEdges: true,
+  showAxes: true,
+  showAxisScaleLabels: true,
+  showObjectAxisCoordinates: true,
   objectsReceiveShadows: false,
   primitivesCastShadows: false,
   pointShadowsEnabled: false,

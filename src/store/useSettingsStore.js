@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS = {
   showAxisToggleButton: true,
   showOriginLabel: false,
   showAxisScaleLabels: true,
+  showObjectAxisCoordinates: false,
   showAxisGizmo: true,
   objectsReceiveShadows: false,
   primitivesCastShadows: false,

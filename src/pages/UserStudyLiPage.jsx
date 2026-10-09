@@ -10,10 +10,6 @@ import './UserStudyLiPage.css'
 const STUDY_EXERCISES = [
   { id: 'cube-point-pivot-rotation' },
   { id: 'point-plane-distance', title: 'Calculate distance from point P to a plane 1' },
-  {
-    id: 'userstudy-li-equation-point-plane-distance',
-    title: 'Calculate distance from point P to a plane 2',
-  },
 ]
 const CURRENT_RESEARCH_ID_KEY = 'userstudyLi.currentResearchId'
 
