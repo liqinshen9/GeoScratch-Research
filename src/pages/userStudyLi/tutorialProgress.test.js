@@ -75,7 +75,7 @@ describe('interactive session tutorial', () => {
     const built = [sphere(TUTORIAL_SPHERES[0])]
     for (const spec of TUTORIAL_SPHERES.slice(1)) {
       expect(tutorialProgress(workspace(built), true).part.key).toBe(spec.key)
-      expect(tutorialProgress(workspace(built), true).stage).toBe('sphere')
+      expect(tutorialProgress(workspace(built), true).stage).toBe(spec.key === 'right' ? 'duplicate' : 'sphere')
       const ear = block('geo_sphere')
       built.push(ear)
       expect(tutorialProgress(workspace(built), true).stage).toBe('scalar')
@@ -91,5 +91,19 @@ describe('interactive session tutorial', () => {
       centreFields.Y = spec.centre[1]
     }
     expect(tutorialProgress(workspace(built), true).stage).toBe('done')
+  })
+  it('guides duplicating the left ear, then checks the copied inputs for the right ear', () => {
+    const head = sphere(TUTORIAL_SPHERES[0])
+    const left = sphere(TUTORIAL_SPHERES[1])
+    const ws = workspace([head, left])
+    expect(tutorialProgress(ws).stage).toBe('duplicate')
+    expect(tutorialProgress(ws).duplicateSource).toBe(left)
+    const copy = sphere(TUTORIAL_SPHERES[1])
+    const copied = workspace([head, left, copy])
+    expect(tutorialProgress(copied).stage).toBe('values')
+    expect(tutorialProgress(copied).head).toBe(copy)
+    expect(tutorialProgress(copied).fieldName).toBe('X')
+    copy.getInputTargetBlock('CENTRE').getFieldValue = (name) => ({ X: 2, Y: 4, Z: 0 })[name]
+    expect(tutorialProgress(copied).stage).toBe('done')
   })
 })

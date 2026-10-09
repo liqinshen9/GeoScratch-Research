@@ -91,6 +91,7 @@ export function Steps({ steps, partialSteps, partialMessages, feedbackRevision, 
         <button
           type="button"
           className="exercise-step-check"
+          data-step-key={key}
           data-complete={steps[key] ? 'true' : undefined}
           onClick={() => checkStep(key)}
         >

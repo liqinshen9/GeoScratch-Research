@@ -99,6 +99,7 @@ export default function ExercisePage({
   onNextExercise,
   transformObjects,
   toggleLabelsOnLeftClick = false,
+  onLabelsToggle,
 }) {
   const { objects, autoRender, setPendingObjects, setObjects } = useSceneStore()
   const { workspace, userBlocks } = useWorkspaceStore()
@@ -283,7 +284,7 @@ export default function ExercisePage({
         <EditorColumnHeaders
           leadingHeader={
             <div className="exercise-column-heading">
-              <h2>Exercise</h2>
+              <h2>{exercise.kind === 'tutorial' ? 'Tutorial' : 'Exercise'}</h2>
               {onPreviousExercise || onNextExercise ? (
                 <div className="exercise-column-heading__nav" aria-label="Study exercise navigation">
                   {onPreviousExercise && (
@@ -454,6 +455,7 @@ export default function ExercisePage({
             objects={objects}
             answer={showAnswerHighlight ? answerHighlight : undefined}
             toggleLabelsOnLeftClick={toggleLabelsOnLeftClick}
+            onLabelsToggle={onLabelsToggle}
           />
         </div>
       </main>

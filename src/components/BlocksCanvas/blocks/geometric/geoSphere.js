@@ -54,7 +54,7 @@ function geoSphereDefinition(centreInput, radiusInput, blockId) {
         return
       }
       edges.visible = !!state.settings.sphereShowGridlines
-      material.color.set(window.GeoScratchColors.forInstance('sphere', blockId))
+      material.color.set(mesh.userData.materialColorOverride ?? window.GeoScratchColors.forInstance('sphere', blockId))
     })
   }
 

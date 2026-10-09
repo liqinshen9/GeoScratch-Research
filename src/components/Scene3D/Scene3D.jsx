@@ -195,6 +195,7 @@ export default function Scene3D({
   hiddenLabelKeys: extraHiddenLabelKeys,
   onObjectClick,
   toggleLabelsOnLeftClick = false,
+  onLabelsToggle,
   // Where the camera starts. Only a non-interactive view has any business
   // changing it: with no orbiting, the fixed distance is the whole framing.
   cameraPosition = DEFAULT_CAMERA_POSITION,
@@ -315,7 +316,8 @@ export default function Scene3D({
       labelKeys.forEach((key) => allHidden ? next.add(key) : next.delete(key))
       return next
     })
-  }, [visibleHiddenLabelKeys])
+    if (labelKeys.length) onLabelsToggle?.({ labelKeys, visible: allHidden })
+  }, [visibleHiddenLabelKeys, onLabelsToggle])
 
   const handleSelectBlockFrom3D = useCallback(
     (blockId) => setSelectedBlockId(blockId),

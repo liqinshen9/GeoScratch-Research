@@ -22,6 +22,7 @@ export function tutorialProgress(workspace, createOpen = false) {
   const point = workspace?.getBlocksByType('linalg_point', false).find((block) => !block.getParent?.())
   const state = { head, scalar, point, completed, part }
   if (completed.length === 3) return { stage: 'done', head, completed }
+  if (!head && part.key === 'right') return { ...state, stage: 'duplicate', duplicateSource: matches.left }
   if (!head) return { ...state, stage: createOpen ? 'sphere' : 'open' }
   if (getInputBlock(head, 'RADIUS_INPUT')?.type !== 'scalar') return { ...state, stage: scalar ? 'radius' : createOpen ? 'scalar' : 'open' }
   if (getInputBlock(head, 'CENTRE')?.type !== 'linalg_point') return { ...state, stage: point ? 'centre' : createOpen ? 'point' : 'open' }

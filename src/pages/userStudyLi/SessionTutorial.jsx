@@ -2,17 +2,21 @@ import { useEffect, useRef, useState } from 'react'
 import * as Blockly from 'blockly/core'
 import ExercisePage from '@/pages/ExercisePage'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
+import usePivotPlaybackStore from '@/store/usePivotPlaybackStore'
 import tutorialExercise from './SphereTutorialExercise'
 import { tutorialProgress } from './tutorialProgress'
 import './SessionTutorial.css'
 
 const COPY = {
-  open: ['Open the Toolbox', 'Click Create to find your blocks.'],
-  sphere: ['Drag a Sphere', 'Drag Sphere from the Toolbox into the Workspace.'],
-  scalar: ['Add a Scalar', 'Drag Scalar from the Toolbox into the Workspace.'],
+  open: ['Open the Toolbox to explore all the available blocks.', ''],
+  sphere: ['Drag the block from the Toolbox into the Workspace.', ''],
+  scalar: ['Drag the block from the Toolbox into the Workspace.', ''],
   radius: ['Connect the Scalar', 'Drag your Scalar block into the Sphere’s Radius socket.'],
-  point: ['Add a Point', 'Drag Point from the Toolbox into the Workspace.'],
+  point: ['Drag the block from the Toolbox into the Workspace.', ''],
   centre: ['Connect the Point', 'Drag your Point block into the Sphere’s Centre socket.'],
+  duplicate: ['Duplicate a Sphere', 'Right-click the Sphere block and select Duplicate.'],
+  replay: ['Replay the 3D animation', 'Click Show animation on the left to replay the 3D steps. You can rotate the 3D view to find a clear viewing angle.'],
+  labels: ['Toggle a sphere’s label', 'Left-click a sphere in the 3D view to show its name. Click it again to hide the label.'],
   done: ['You made it!', 'You can now drag, connect, and edit blocks.'],
 }
 
@@ -32,19 +36,44 @@ function connectionPosition(workspace, block, input) {
   return Blockly.utils.svgMath.wsToScreenCoordinates(workspace, new Blockly.utils.Coordinate(blockPosition.x + offset.x, blockPosition.y + offset.y))
 }
 
-function TutorialGuide({ onDone }) {
+function TutorialGuide({ onDone, labelToggleCount }) {
   const workspace = useWorkspaceStore((state) => state.workspace)
   const [revision, setRevision] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
   const [focus, setFocus] = useState(null)
   const [replay, setReplay] = useState(0)
   const [layoutRevision, setLayoutRevision] = useState(0)
+  const [watchedAnimation, setWatchedAnimation] = useState(false)
+  const [triedLabels, setTriedLabels] = useState(false)
+  const previousLabelToggleCount = useRef(labelToggleCount)
+  const animationPlaying = usePivotPlaybackStore((state) => Boolean(state.target?.userData?.tutorialPreview))
   const demoRef = useRef(null)
   const progress = tutorialProgress(workspace, createOpen)
-  const { stage, head, scalar, point, completed, part, fieldBlock, fieldName, expectedValue, fieldLabel } = progress
+  const { stage: workspaceStage, head, scalar, point, completed, part, fieldBlock, fieldName, expectedValue, fieldLabel, duplicateSource } = progress
+  const stage = workspaceStage === 'done'
+    ? !watchedAnimation ? 'replay' : !triedLabels ? 'labels' : 'done'
+    : workspaceStage
   const numberField = fieldBlock?.getField(fieldName)?.getSvgRoot()
   const coordinateGuide = stage === 'values' && fieldName && fieldName !== 'scalar'
   const inputArrowGuide = stage === 'values' && part?.key === 'head'
+
+  useEffect(() => usePivotPlaybackStore.subscribe((state, previous) => {
+    if (!state.target && state.progress >= 1 && previous.target?.userData?.tutorialPreview) {
+      setWatchedAnimation(true)
+    }
+  }), [])
+  useEffect(() => {
+    if (workspaceStage !== 'done') {
+      setWatchedAnimation(false)
+      setTriedLabels(false)
+    }
+  }, [workspaceStage])
+  useEffect(() => {
+    if (labelToggleCount !== previousLabelToggleCount.current && watchedAnimation && workspaceStage === 'done') {
+      setTriedLabels(true)
+    }
+    previousLabelToggleCount.current = labelToggleCount
+  }, [labelToggleCount, watchedAnimation, workspaceStage])
 
   useEffect(() => {
     const refresh = (event) => {
@@ -74,26 +103,62 @@ function TutorialGuide({ onDone }) {
   useEffect(() => {
     const type = { sphere: 'geo_sphere', scalar: 'scalar', point: 'linalg_point' }[stage]
     const reference = stage === 'values' ? document.querySelector(`[data-tutorial-${coordinateGuide ? 'centre' : 'radius'}="${part.key}"]`) : null
-    const target = stage === 'values' ? (inputArrowGuide ? numberField : reference)
+    const target = stage === 'replay' ? (animationPlaying ? null : document.querySelector('[data-tutorial-animation]'))
+      : stage === 'values' ? (inputArrowGuide ? numberField : reference)
+      : stage === 'duplicate' ? duplicateSource?.getSvgRoot()?.querySelector(':scope > .blocklyPath')
       : stage === 'open' ? document.querySelector('[data-category-id="create"]')
       : type ? document.querySelector(`[data-block-type="${type}"]`)
         : stage === 'radius' ? scalar?.getSvgRoot() : stage === 'centre' ? point?.getSvgRoot() : numberField ?? head?.getSvgRoot()
     if (type) target?.scrollIntoView({ block: 'nearest' })
     reference?.scrollIntoView({ block: 'nearest' })
     reference?.classList.add('tutorial-table-highlight')
-    const blockRoot = type ? target?.querySelector('.blocklyBlockCanvas > g')
+    const checkButton = stage === 'values' ? document.querySelector(`.exercise-step-check[data-step-key="${part.key}"]`) : null
+    checkButton?.classList.add('tutorial-check-highlight')
+    const blockRoot = stage === 'duplicate' ? duplicateSource?.getSvgRoot()
+      : type ? target?.querySelector('.blocklyBlockCanvas > g')
       : stage === 'radius' ? scalar?.getSvgRoot()
         : stage === 'centre' ? point?.getSvgRoot()
           : stage === 'values' ? fieldBlock?.getSvgRoot() : null
     if (stage !== 'done') blockRoot?.classList.add('tutorial-block-highlight')
     const rect = target?.getBoundingClientRect()
     const referenceRect = reference?.getBoundingClientRect()
-    setFocus(rect && stage !== 'done' ? { x: rect.x - 6, y: rect.y - 6, width: rect.width + 12, height: rect.height + 12, outline: stage === 'open', reference: referenceRect } : null)
+    const padding = stage === 'replay' ? 3 : 6
+    if (stage !== 'replay') setFocus(rect && stage !== 'done' ? { x: rect.x - padding, y: rect.y - padding, width: rect.width + padding * 2, height: rect.height + padding * 2, outline: stage === 'open', reference: referenceRect, check: checkButton?.getBoundingClientRect() } : null)
     return () => {
       blockRoot?.classList.remove('tutorial-block-highlight')
       reference?.classList.remove('tutorial-table-highlight')
+      checkButton?.classList.remove('tutorial-check-highlight')
+      if (stage === 'replay') target?.classList.remove('tutorial-check-highlight')
     }
-  }, [stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key])
+  }, [stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key, duplicateSource, animationPlaying])
+
+  useEffect(() => {
+    if (stage !== 'replay') return undefined
+    if (animationPlaying) {
+      setFocus(null)
+      return undefined
+    }
+    let frame
+    let positioned = false
+    const followButton = () => {
+      const button = document.querySelector('[data-tutorial-animation]')
+      if (button) {
+        if (!positioned) {
+          button.scrollIntoView({ block: 'center', behavior: 'instant' })
+          positioned = true
+        }
+        // Completion changes the panel layout after the workspace event. Read
+        // the live rectangle each frame, including during scrolling/layout shifts.
+        const rect = button.getBoundingClientRect()
+        const next = { x: rect.x - 3, y: rect.y - 3, width: rect.width + 6, height: rect.height + 6, outline: false }
+        setFocus((current) => current && current.x === next.x && current.y === next.y
+          && current.width === next.width && current.height === next.height ? current : next)
+      }
+      frame = requestAnimationFrame(followButton)
+    }
+    frame = requestAnimationFrame(followButton)
+    return () => cancelAnimationFrame(frame)
+  }, [stage, animationPlaying])
 
   useEffect(() => {
     const host = demoRef.current
@@ -104,7 +169,8 @@ function TutorialGuide({ onDone }) {
     const preview = type ? document.querySelector(`[data-block-type="${type}"]`) : null
     const createButton = document.querySelector('[data-category-id="create"]')
     const existing = stage === 'radius' ? scalar?.getSvgRoot() : stage === 'centre' ? point?.getSvgRoot() : null
-    const source = stage === 'open' ? createButton : numberField ?? existing ?? preview
+    const source = stage === 'duplicate' ? duplicateSource?.getSvgRoot()?.querySelector(':scope > .blocklyPath')
+      : stage === 'open' ? createButton : numberField ?? existing ?? preview
     const original = existing ?? preview?.querySelector('.blocklyBlockCanvas > g')
     const rect = (original ?? source)?.getBoundingClientRect()
     if (!rect) return undefined
@@ -112,7 +178,12 @@ function TutorialGuide({ onDone }) {
     host.append(cursor)
     cursor.style.left = `${rect.x + (original ? Math.min(rect.width / 2, 30) : rect.width / 2)}px`
     cursor.style.top = `${rect.y + (original ? 12 : rect.height / 2)}px`
-    if (stage === 'open' || stage === 'values') {
+    if (stage === 'duplicate') {
+      // The group's bounds include attached inputs; aim at the Sphere title itself.
+      cursor.style.left = `${rect.x + 16}px`
+      cursor.style.top = `${rect.y + 8}px`
+    }
+    if (stage === 'open' || stage === 'values' || stage === 'duplicate') {
       animations.push(cursor.animate([{ transform: 'translate(20px, 24px)', opacity: 0 }, { transform: 'translate(0, 0)', opacity: 1, offset: 0.4 }, { transform: 'translate(0, 0) scale(.9)', opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: 3300, iterations: Infinity }))
       if (numberField) {
         // Radius is guided from above; centre fields from below, clear of Radius.
@@ -188,33 +259,48 @@ function TutorialGuide({ onDone }) {
       animations.push(cursor.animate(pointerFrames, timing))
     }
     return () => { animations.forEach((animation) => animation.cancel()); host.replaceChildren() }
-  }, [stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision])
+  }, [stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision, duplicateSource])
 
   const [title, description] = coordinateGuide
-    ? ['Set the centre', `Use the ${part.name.toLowerCase()} coordinates in the table on the left to fill in x, y and z in your Point block.`]
+    ? ['Set the centre', 'Enter the centre coordinates in your Point block.']
     : stage === 'values'
-    ? ['Set the radius', `Use the highlighted radius in the table on the left to fill in your Scalar block.`]
+    ? ['Set the radius', 'Enter the radius in your Scalar block.']
     : COPY[stage]
+  const restartTutorial = () => {
+    setWatchedAnimation(false)
+    setTriedLabels(false)
+    workspace?.clear()
+    workspace?.clearUndo()
+    document.querySelector('[data-category-id].is-active')?.click()
+    setCreateOpen(false)
+    setRevision((value) => value + 1)
+    setReplay((value) => value + 1)
+  }
   return <>
-    {focus && <svg className="tutorial-spotlight" aria-hidden="true"><path fillRule="evenodd" d={`M0 0H${window.innerWidth}V${window.innerHeight}H0Z M${focus.x} ${focus.y}v${focus.height}h${focus.width}v-${focus.height}Z${inputArrowGuide && focus.reference ? ` M${focus.reference.x} ${focus.reference.y}v${focus.reference.height}h${focus.reference.width}v-${focus.reference.height}Z` : ''}`} />{focus.outline && <rect x={focus.x} y={focus.y} width={focus.width} height={focus.height} rx="8" />}</svg>}
+    {focus && <svg className="tutorial-spotlight" aria-hidden="true"><path fillRule="evenodd" d={`M0 0H${window.innerWidth}V${window.innerHeight}H0Z M${focus.x} ${focus.y}v${focus.height}h${focus.width}v-${focus.height}Z${inputArrowGuide && focus.reference ? ` M${focus.reference.x} ${focus.reference.y}v${focus.reference.height}h${focus.reference.width}v-${focus.reference.height}Z` : ''}${focus.check ? ` M${focus.check.x - 3} ${focus.check.y - 3}v${focus.check.height + 6}h${focus.check.width + 6}v-${focus.check.height + 6}Z` : ''}`} />{focus.outline && <rect x={focus.x} y={focus.y} width={focus.width} height={focus.height} rx="8" />}</svg>}
     <div className="tutorial-demo" ref={demoRef} aria-hidden="true" />
     <section className="tutorial-coach" aria-label="Tutorial guide">
-      <div className="tutorial-coach__top"><span className="tutorial-eyebrow">Quick tutorial · {completed.length}/3 spheres{part ? ` · ${part.name}` : ''}</span><button type="button" className="tutorial-skip" onClick={onDone}>Skip</button></div>
-      <h2>{title}</h2><p aria-live="polite">{description}</p>
-      {stage === 'done' ? <button type="button" className="tutorial-primary" onClick={onDone}>Start the first exercise →</button>
-        : <div className="tutorial-coach__actions"><span>Your turn — try it in the workspace.</span><button type="button" onClick={() => setReplay((value) => value + 1)}>Watch again</button></div>}
+      <div className="tutorial-coach__top"><span className="tutorial-eyebrow">{completed.length}/3</span>{workspaceStage !== 'done' && <button type="button" className="tutorial-skip" onClick={onDone}>Skip tutorial</button>}</div>
+      <h2>{title}</h2>{description && <p aria-live="polite">{description}</p>}
+      {stage === 'values' && <p>Click Check for this step if you need a hint.</p>}
+      {stage === 'done' && <div className="tutorial-coach__actions">
+        <button type="button" onClick={restartTutorial}>Watch again</button>
+        <button type="button" className="tutorial-primary" onClick={onDone}>Start the first exercise →</button>
+      </div>}
     </section>
   </>
 }
 
 export default function SessionTutorial({ researchId, onDone }) {
+  const [labelToggleCount, setLabelToggleCount] = useState(0)
   return <div className="app-container flex h-dvh flex-col overflow-hidden">
     <main className="flex min-h-0 flex-1 flex-col">
       <ExercisePage exerciseModule={tutorialExercise} standalone
         workspaceId={`userstudy-Li-${researchId}-tutorial`}
         trackingEnabled={false} workspaceCloudSyncEnabled={false} showDebugSolution={false}
-        showAnswerHighlight={false} hideAnimationTransport wideTaskPanel />
-      <TutorialGuide onDone={onDone} />
+        showAnswerHighlight={false} hideAnimationTransport wideTaskPanel
+        toggleLabelsOnLeftClick onLabelsToggle={() => setLabelToggleCount((count) => count + 1)} />
+      <TutorialGuide onDone={onDone} labelToggleCount={labelToggleCount} />
     </main>
   </div>
 }
