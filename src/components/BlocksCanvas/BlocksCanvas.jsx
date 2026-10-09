@@ -19,7 +19,7 @@ import {
 } from '@/components/BlocksCanvas/hooks/useBlockTrash'
 import { useBlockSelectionSync } from '@/components/BlocksCanvas/hooks/useBlockSelectionSync'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
-import { canonicalizeWorkspaceXml } from '@/utils/blocklyXml'
+import { canonicalizeWorkspaceXml, nameCompositeBlockXml } from '@/utils/blocklyXml'
 import './BlocksCanvas.css'
 
 const BUILT_IN_BLOCK_TYPES = new Set(
@@ -161,7 +161,7 @@ export default function BlocksCanvas({
 
       addUserBlock({
         name: trimmedName,
-        xmlText,
+        xmlText: nameCompositeBlockXml(xmlText, trimmedName),
         source:
           reusableBlockTemplate?.source || (id?.startsWith('exercise') ? 'exercise' : 'workspace'),
       })
@@ -180,7 +180,7 @@ export default function BlocksCanvas({
         .userBlocks.find((block) => block.id === blockId)
       if (!userBlock) return
       if (
-        addCompositeBlockToWorkspace(workspace, userBlock.xmlText, {
+        addCompositeBlockToWorkspace(workspace, nameCompositeBlockXml(userBlock.xmlText, userBlock.name), {
           ...options,
           myBlockId: blockId,
         })

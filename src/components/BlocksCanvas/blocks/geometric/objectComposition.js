@@ -12,7 +12,7 @@ export default function initObjectCompositionBlocks() {
 
   Blockly.Blocks.geo_special_cube = {
     init() {
-      this.appendDummyInput().appendField('special block')
+      this.appendDummyInput().appendField(new Blockly.FieldLabelSerializable('special block'), 'BLOCK_NAME')
       this.setOutput(true, 'obj3D')
       this.setStyle(BLOCK_STYLES.CREATE_CUBE)
       this.setTooltip(

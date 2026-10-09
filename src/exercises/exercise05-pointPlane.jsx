@@ -6,6 +6,7 @@ import { createPointMarker } from '@/utils/pointMarker'
 import { buildNormalVectorGlyph } from '@/utils/distanceIllustration'
 import usePivotPlaybackStore from '@/store/usePivotPlaybackStore'
 import { installPointPlaneStepAnimation } from './shared/pointPlaneStepAnimation'
+import { buildNormalPlaneRightAngle } from './shared/normalPlaneRightAngle'
 import {
   blockMatchesVec3,
   closeNumber,
@@ -264,7 +265,9 @@ function findNormalFromQBlock(workspace) {
 }
 
 function findPointQObject(objects, workspace) {
-  const pointQBlock = getInputBlock(findPointDifferenceBlock(workspace), 'V')
+  // Q1 exists independently of the subtraction in step 4. Read it directly
+  // so a correctly constructed normal can complete step 5 in any order.
+  const pointQBlock = findExercisePointQBlock(workspace)
   return (
     objects.find(
       (object) =>
@@ -278,36 +281,9 @@ function normalStartsAtRecordedQ(objects, workspace) {
   const normalBlock = findNormalFromQBlock(workspace)
   const qPoint = findPointQObject(objects, workspace)?.userData?.point
   const enteredPoint = vec3FromBlock(getInputBlock(normalBlock, 'ORIGIN'))
-  // Q1 is shown to three decimal places, so accept the coordinates the
+  // Q1 is shown to two decimal places, so accept the coordinates the
   // participant can actually read and enter from the 3D label.
-  return Boolean(qPoint?.isVector3 && vectorMatches(enteredPoint, qPoint, 0.001))
-}
-
-function buildNormalPlaneRightAngle(origin, normal, color, size = 0.38) {
-  const normalUnit =
-    normal?.lengthSq?.() > 1e-12 ? normal.clone().normalize() : new THREE.Vector3(0, 1, 0)
-  const tangent =
-    Math.abs(normalUnit.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)
-  tangent.addScaledVector(normalUnit, -tangent.dot(normalUnit))
-  if (tangent.lengthSq() < 1e-10) tangent.set(0, 0, 1)
-  tangent.normalize()
-
-  const marker = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([
-      origin.clone().addScaledVector(normalUnit, size),
-      origin.clone().addScaledVector(normalUnit, size).addScaledVector(tangent, size),
-      origin.clone().addScaledVector(tangent, size),
-    ]),
-    new THREE.LineBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.95,
-      depthTest: false,
-    }),
-  )
-  marker.renderOrder = 22
-  marker.userData.geoType = 'normal_plane_right_angle'
-  return marker
+  return Boolean(qPoint?.isVector3 && vectorMatches(enteredPoint, qPoint, 0.005000001))
 }
 
 function replaceStudyNormalGlyph(objects, workspace) {
@@ -351,12 +327,11 @@ function decoratePlaneDefinition(objects, visible) {
         (child) => child.userData?.geoType === 'parametric_plane_point_normal_group',
       )
       if (helper) helper.visible = visible
+      object.userData.renderNestedLabels = true
+      object.userData.toggleLabelsOnClick = true
       object.userData?.labels?.forEach((label) => {
         if (label.anchor !== 'point') return
-        label.name = 'A'
-        label.value = vectorNotation.formatVector(PLANE_POINT_A)
-        label.className = 'label--study-coordinate'
-        label.revealed = () => helper?.visible !== false
+        label.hiddenByDefault = !visible
       })
     }),
   )
@@ -601,7 +576,8 @@ function evaluate({ objects, workspace }) {
   const { distance, target } = readDistance(objects)
   const distanceIsCorrect = distance !== null && closeNumber(distance, CORRECT_DISTANCE, 0.01)
   const normalFromRecordedQ = normalStartsAtRecordedQ(objects, workspace)
-  const passed = distanceIsCorrect && hasValidDistanceComputation(workspace) && normalFromRecordedQ
+  const distanceComputationIsCorrect = distanceIsCorrect && hasValidDistanceComputation(workspace)
+  const passed = distanceComputationIsCorrect && normalFromRecordedQ
 
   const hasPointP = workspaceHasPointPVector(workspace)
   const hasPointQ = hasPointQOnExercisePlane(objects)
@@ -613,7 +589,7 @@ function evaluate({ objects, workspace }) {
     normalFromQ: normalFromRecordedQ,
     // The projection ticks on its own, before the magnitude finishes the job.
     projection: hasProjectionOntoNormalBlock(workspace),
-    distance: passed,
+    distance: distanceComputationIsCorrect,
   }
   const partialSteps = {
     plane: !steps.plane && hasAnyBlockOfType(workspace, 'parametric_plane'),

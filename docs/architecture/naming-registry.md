@@ -18,16 +18,16 @@ here.
 
 A number is assigned **once**, when a block is created (a `BLOCK_CREATE`
 listener), never recomputed from code-generation order - so deleting an earlier
-object never renumbers a later one. Numbers are monotonic per kind per
-workspace and never reused.
+object never renumbers a later one. New blocks receive the lowest available
+positive number of their kind in the current workspace. Deleted numbers can
+be reused, and clearing the workspace makes number 1 available again.
 
 The record is persisted on `block.data` under the namespaced key
 `geoScratchNaming`, so a block carries exactly one naming record that survives
 save/reload.
 
-Per-workspace counters are rehydrated from the **max already-persisted number**
-per kind (`refreshNamingCounters`), never a separately persisted value, so
-there's nothing to get out of sync on load.
+Number allocation scans current blocks' persisted records and names directly;
+there is no historical creation counter to reset or rehydrate.
 
 ## The variable wrapper
 
@@ -80,12 +80,11 @@ A conflicted copy gets `custom: null` (two blocks called "Origin" is the exact
 bug this fixes) and a fresh `refId` (variable references are keyed by refId; a
 shared one lets a duplicated wrapper silently hijack the original's references).
 
-### refresh-counters-on-eventless-restore
+### eventless-restore
 
-`refreshNamingCounters` is exported because a workspace can be populated with
-events disabled (`BlocksCanvas.jsx`'s saved-XML restore), which bypasses the
-`BLOCK_CREATE` listener and would leave counters at zero - the next new block
-would then collide with a restored one.
+When a workspace is populated with events disabled, the restored naming
+records still reserve their numbers. Allocation reads these live records,
+so the next new block cannot collide with a restored one.
 
 ### undo-group-join
 

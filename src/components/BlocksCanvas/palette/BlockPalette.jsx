@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as Blockly from 'blockly/core'
+import { nameCompositeBlockXml } from '@/utils/blocklyXml'
 import { Delete } from '@icon-park/react'
 import { getCategory } from '@/components/BlocksCanvas/catalog/blockCatalog'
 import { getBlockTheme } from '@/components/BlocksCanvas/blocks/blockColours'
@@ -124,7 +125,7 @@ function BlockPreview({ type, onSelect, onDragStartBlock }) {
   )
 }
 
-function MyBlockPreview({ xmlText }) {
+function MyBlockPreview({ xmlText, name }) {
   const hostRef = useRef(null)
   const resolvedTheme = useSettingsStore((s) => s.resolvedTheme)
 
@@ -138,7 +139,7 @@ function MyBlockPreview({ xmlText }) {
     })
 
     try {
-      const dom = Blockly.utils.xml.textToDom(xmlText)
+      const dom = Blockly.utils.xml.textToDom(nameCompositeBlockXml(xmlText, name))
       dom.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'))
       Blockly.Xml.domToWorkspace(dom, ws)
 
@@ -165,7 +166,7 @@ function MyBlockPreview({ xmlText }) {
       ws.dispose()
       host.innerHTML = ''
     }
-  }, [xmlText, resolvedTheme])
+  }, [xmlText, name, resolvedTheme])
 
   return <span className="my-block-card__preview" ref={hostRef} />
 }
@@ -206,7 +207,7 @@ function MyBlockCard({ block, onSelect, onDragStartBlock, onDragEndBlock }) {
         title="Add this saved block to the workspace"
         aria-label={`Add ${block.name}`}
       >
-        <MyBlockPreview xmlText={block.xmlText} />
+        <MyBlockPreview xmlText={block.xmlText} name={block.name} />
       </button>
     </div>
   )
@@ -300,7 +301,7 @@ function MyBoxPalette({ onMakeBlock, onUserBlockSelect, onUserBlockDelete, onUse
                   title={`Restore ${block.name}`}
                   onClick={() => handleRestoreDeleted(block.id)}
                 >
-                  <MyBlockPreview xmlText={block.xmlText} />
+                  <MyBlockPreview xmlText={block.xmlText} name={block.name} />
                 </button>
               ))
             ) : (

@@ -764,12 +764,14 @@
 }
 
 /* Blockly mounts its temporary field editor outside the workspace container. */
-:root[data-theme='dark'] .blocklyWidgetDiv .blocklyHtmlInput {
+.blocklyWidgetDiv .blocklyHtmlInput {
+  background-color: #ffffff;
   color: #000000;
   caret-color: #000000;
+  box-shadow: 0 0 0 1px #002ea6;
 }
 
-:root[data-theme='dark'] .blocklyWidgetDiv .blocklyHtmlInput::selection {
+.blocklyWidgetDiv .blocklyHtmlInput::selection {
   color: #000000;
   background: #bfdbfe;
 }

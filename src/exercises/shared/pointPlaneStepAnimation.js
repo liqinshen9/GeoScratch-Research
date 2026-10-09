@@ -96,7 +96,7 @@ export function installPointPlaneStepAnimation({ objects, workspace, blocks }) {
   const state = { playing: false, stage: 0, localProgress: 0 }
   for (const label of planeObject.userData?.labels ?? []) {
     if (label.anchor !== 'point') continue
-    label.revealed = () => false
+    label.revealed = () => !state.playing || state.stage === 0
   }
   gateLabels(planeObject, state, 0)
   gateLabels(pointObject, state, 1)
@@ -133,6 +133,21 @@ export function installPointPlaneStepAnimation({ objects, workspace, blocks }) {
   const normalLength = normalObject?.userData?.vectorLength ?? 0
   const differenceLength = differenceArrow?.userData?.vectorLength ?? 0
   const usesStandaloneNormal = typeof normalObject?.userData?.setVectorLength === 'function'
+  const animatedNormal = usesStandaloneNormal
+    ? normalObject : childWithType(projectionObject, 'distance_normal_arrow')
+  let normalRightAngle = childWithType(animatedNormal, 'normal_plane_right_angle')
+  if (animatedNormal && !normalRightAngle) {
+    const origin = animatedNormal.userData.vectorOrigin
+      ?? vec3FromBlock(inputBlock(blocks.normalFromQ, 'ORIGIN'))
+    const normal = vec3FromBlock(blocks.normalFromQ)
+      ?? (origin && animatedNormal.userData.vectorTip?.clone().sub(origin))
+    if (origin && normal) {
+      const color = childWithType(animatedNormal, 'distance_normal_shaft')?.material?.color
+        ?? globalThis.window?.GeoScratchColors?.forRole('operandB') ?? '#ef4444'
+      normalRightAngle = buildNormalPlaneRightAngle(origin, normal, color)
+      animatedNormal.add(normalRightAngle)
+    }
+  }
   let highlighted = null
 
   const setVisible = (object, visible) => {
@@ -167,6 +182,7 @@ export function installPointPlaneStepAnimation({ objects, workspace, blocks }) {
     setVisible(magnitudeObject, stage >= 6)
 
     const normalProgress = stage < 3 ? 0 : stage > 3 ? 1 : clamp01(localProgress)
+    setVisible(normalRightAngle, normalProgress > 0.05)
     if (usesStandaloneNormal) {
       normalObject.userData.setVectorLength(normalLength * normalProgress)
     } else {
@@ -235,3 +251,6 @@ export function installPointPlaneStepAnimation({ objects, workspace, blocks }) {
 }
 
 export default installPointPlaneStepAnimation
+import { buildNormalPlaneRightAngle } from './normalPlaneRightAngle'
+import { vec3FromBlock } from './blockQueries'
+

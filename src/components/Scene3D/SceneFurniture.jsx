@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Text, Billboard } from '@react-three/drei'
 import THREE from '@/utils/three'
@@ -39,18 +39,22 @@ function AxisTick({ ring, position, value, color, toggleable, showLabel }) {
         </mesh>
       )}
       {showLabel && labelVisible && (
-    <Billboard position={position.toArray()}>
-      <Text
-        fontSize={toggleable ? 0.18 : 0.3}
-        color={color}
-        fillOpacity={toggleable ? 0.9 : 0.75}
-        anchorX="center"
-        anchorY="middle"
-        onClick={toggleLabel}
-      >
-        {value}
-      </Text>
-    </Billboard>
+        // The first coordinate mounts Text only after an object is added.
+        // Keep its font suspension local so it cannot hide the whole Canvas.
+        <Suspense fallback={null}>
+          <Billboard position={position.toArray()}>
+            <Text
+              fontSize={toggleable ? 0.18 : 0.3}
+              color={color}
+              fillOpacity={toggleable ? 0.9 : 0.75}
+              anchorX="center"
+              anchorY="middle"
+              onClick={toggleLabel}
+            >
+              {Number(value).toFixed(2)}
+            </Text>
+          </Billboard>
+        </Suspense>
       )}
     </group>
   )

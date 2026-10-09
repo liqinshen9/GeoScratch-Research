@@ -85,56 +85,27 @@ function genRefId() {
   return `ref-${Blockly.utils.idGenerator.genUid()}`
 }
 
-// Per-workspace counters, rehydrated from the max persisted number per kind.
-// See docs/architecture/naming-registry.md#assign-once-semantics.
-
-const workspaceCounters = new WeakMap()
 const installedWorkspaces = new WeakSet()
-
-function getCounters(workspace) {
-  let counters = workspaceCounters.get(workspace)
-  if (!counters) {
-    counters = {}
-    workspaceCounters.set(workspace, counters)
-  }
-  return counters
-}
-
-// Exported for the events-disabled saved-XML restore path.
-// See docs/architecture/naming-registry.md#refresh-counters-on-eventless-restore.
-export function refreshNamingCounters(workspace) {
-  if (!workspace) return
-  const counters = {}
-  workspace.getAllBlocks(false).forEach((block) => {
-    const data = readNamingData(block)
-    if (!data?.kind || !Number.isFinite(data.number)) return
-    counters[data.kind] = Math.max(counters[data.kind] || 0, data.number)
-  })
-  workspaceCounters.set(workspace, counters)
-}
-
-function nextNumber(workspace, kind) {
-  const counters = getCounters(workspace)
-  const next = (counters[kind] || 0) + 1
-  counters[kind] = next
-  return next
-}
 
 // First number free in BOTH naming styles.
 // See docs/architecture/naming-registry.md#dual-style-free-check.
 function nextFreeNumber(workspace, block, kind) {
-  for (let attempt = 0; attempt < 1000; attempt += 1) {
-    const number = nextNumber(workspace, kind)
+  const occupied = new Set(workspace.getAllBlocks(false).flatMap((other) => {
+    if (other.id === block.id) return []
+    const data = readNamingData(other)
+    return data?.kind === kind ? [data.number] : []
+  }))
+  for (let number = 1; ; number += 1) {
     const shortName = formatAutoName(kind, number, 'short')
     const descriptiveName = formatAutoName(kind, number, 'descriptive')
     if (
+      !occupied.has(number) &&
       !isNameTaken(workspace, shortName, block.id) &&
       !isNameTaken(workspace, descriptiveName, block.id)
     ) {
       return number
     }
   }
-  return nextNumber(workspace, kind)
 }
 
 // Taken = another block uses this exact name OR holds this {kind, number}.
@@ -176,7 +147,6 @@ export function installNamingRegistry(workspace) {
   if (!workspace || installedWorkspaces.has(workspace)) return
   installedWorkspaces.add(workspace)
 
-  refreshNamingCounters(workspace)
   // Assign to anything already present, without conflict resolution.
   workspace.getAllBlocks(false).forEach((block) => ensureAssigned(workspace, block))
 

@@ -37,7 +37,7 @@ describe('createVectorNotationRuntime', () => {
   it('formats numbers and vectors to 3 decimal places', () => {
     const runtime = createVectorNotationRuntime()
     expect(runtime.formatNumber(1 / 3)).toBeCloseTo(0.333)
-    expect(runtime.formatVector({ x: 1, y: 2 / 3, z: -0.0001 })).toBe('[1, 0.667, 0]')
+    expect(runtime.formatVector({ x: 1, y: 2 / 3, z: -0.0001 })).toBe('[1.00, 0.67, 0.00]')
   })
 
   it('merges metadata into userData without clobbering existing keys', () => {

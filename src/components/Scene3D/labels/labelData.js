@@ -54,7 +54,7 @@ function getLabelVisibilityKeysForObject(object3D) {
 function formatLabelText(lbl, labelDetail) {
   if (lbl.text != null) return lbl.text
   if (lbl.name == null) return ''
-  return labelDetail === 'nameOnly' ? lbl.name : `${lbl.name} = ${lbl.value ?? ''}`
+  return labelDetail === 'nameOnly' ? lbl.name : `${lbl.name}${lbl.nameValueSeparator ?? ' = '}${lbl.value ?? ''}`
 }
 
 export {

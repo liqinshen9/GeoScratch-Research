@@ -486,7 +486,7 @@ describe('exercise 5 (point to plane)', () => {
     return fakeBlock('linalg_vec3', { X: 0.5, Y: 1, Z: 0.5 }, { ORIGIN: origin })
   }
 
-  function stepFive({ enteredQ }) {
+  function stepFive({ enteredQ, actualQ = [2.25, -1.5, 3.75], withMagnitude = false, withoutDifference = false }) {
     const q = pointOnExercisePlane()
     const difference = fakeBlock(
       'vector_arithmetic',
@@ -494,16 +494,19 @@ describe('exercise 5 (point to plane)', () => {
       { U: point(-9, 8, 7), V: q },
     )
     const normal = normalFrom(point(...enteredQ))
-    const workspace = fakeWorkspace([difference, normal])
+    const projection = fakeBlock('vector_project', {}, { U: difference, V: normal })
+    const magnitude = fakeBlock('vector_magnitude', {}, { V: projection })
+    const workspace = fakeWorkspace(withoutDifference ? [q, normal] : withMagnitude ? [magnitude] : [difference, normal])
     const objects = [
       {
         userData: {
           geoType: 'annotated_object',
           srcBlockId: q.id,
-          point: new THREE.Vector3(2.25, -1.5, 3.75),
+          point: new THREE.Vector3(...actualQ),
         },
       },
     ]
+    if (withMagnitude) objects.push({ userData: { geoType: 'point_plane_distance_projection_magnitude', distance: 6.94 } })
     return mod.evaluate({ objects, workspace })
   }
 
@@ -519,6 +522,40 @@ describe('exercise 5 (point to plane)', () => {
 
   it('completes step 5 when the normal starts at the recorded Q1 coordinates', () => {
     expect(stepFive({ enteredQ: [2.25, -1.5, 3.7504] }).steps.normalFromQ).toBe(true)
+  })
+
+  it('completes step 5 before step 4 is constructed', () => {
+    const result = stepFive({
+      enteredQ: [-2.81, -3.82, 7.46],
+      actualQ: [-2.814, -3.824, 7.464],
+      withoutDifference: true,
+    })
+    expect(result.steps.normalFromQ).toBe(true)
+    expect(result.steps.difference).toBe(false)
+    expect(result.steps.projection).toBe(false)
+    expect(result.steps.distance).toBe(false)
+  })
+
+  it('still rejects an incorrect normal origin when step 4 is absent', () => {
+    expect(stepFive({ enteredQ: [2.25, -1.5, 4], withoutDifference: true }).steps.normalFromQ).toBe(false)
+  })
+
+  it('accepts Q1 coordinates copied from the two-decimal scene label', () => {
+    const result = stepFive({
+      enteredQ: [-7.47, 3.78, -3.09],
+      actualQ: [-7.474, 3.784, -3.094],
+      withMagnitude: true,
+    })
+    expect(result.steps.normalFromQ).toBe(true)
+    expect(result.steps.distance).toBe(true)
+    expect(result.passed).toBe(true)
+  })
+
+  it('completes the magnitude step independently of the normal origin step', () => {
+    const result = stepFive({ enteredQ: [2.25, -1.5, 4], withMagnitude: true })
+    expect(result.steps.normalFromQ).toBe(false)
+    expect(result.steps.distance).toBe(true)
+    expect(result.passed).toBe(false)
   })
 
   it('does not complete step 5 when the normal starts at a different point', () => {

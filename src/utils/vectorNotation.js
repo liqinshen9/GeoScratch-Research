@@ -1,8 +1,8 @@
-// Always exactly one decimal ("[1.0, 2.0, 2.0]"), so a label read live during
+// Always exactly two decimals ("[1.00, 2.00, 2.00]"), so a label read live during
 // an animation keeps a steady width instead of flickering between lengths.
-// Anything that rounds to zero prints as 0.0, never -0.0.
+// Anything that rounds to zero prints as 0.00, never -0.00.
 export function formatVectorLive(vector) {
-  const fixed = (value) => (Math.abs(value) < 0.05 ? 0 : value).toFixed(1)
+  const fixed = (value) => (Math.abs(value) < 0.005 ? 0 : value).toFixed(2)
   return `[${fixed(vector.x)}, ${fixed(vector.y)}, ${fixed(vector.z)}]`
 }
 
@@ -25,10 +25,7 @@ export function createVectorNotationRuntime() {
       `${getLabel(left, leftFallback)} ${operator} ${getLabel(right, rightFallback)}`,
     dotLabel: (left, right) => `${getLabel(left, 'p')} dot ${getLabel(right, 'q')}`,
     formatNumber: (value) => Number(Number(value).toFixed(3)),
-    formatVector: (vector) =>
-      '[' +
-      [vector.x, vector.y, vector.z].map((value) => Number(value.toFixed(3))).join(', ') +
-      ']',
+    formatVector: formatVectorLive,
     formatVectorLive,
     getLabel,
     hasLabel,

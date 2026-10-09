@@ -1,8 +1,41 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest'
-import { canonicalizeWorkspaceXml, toWorkspaceXmlText } from './blocklyXml'
+import { canonicalizeWorkspaceXml, toWorkspaceXmlText, nameCompositeBlockXml } from './blocklyXml'
+import * as Blockly from 'blockly/core'
+import initObjectCompositionBlocks from '@/components/BlocksCanvas/blocks/geometric/objectComposition'
 
 const xml = (inner) => `<xml xmlns="https://developers.google.com/blockly/xml">${inner}</xml>`
+
+describe('saved composite names', () => {
+  it('uses the entered name and preserves it through Blockly serialization', () => {
+    initObjectCompositionBlocks()
+    const workspace = new Blockly.Workspace()
+    const restored = new Blockly.Workspace()
+    try {
+      const named = nameCompositeBlockXml(xml('<block type="geo_special_cube" />'), '  My cube & point  ')
+      Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(named), workspace)
+      expect(workspace.getTopBlocks(false)[0].getFieldValue('BLOCK_NAME')).toBe('My cube & point')
+      Blockly.Xml.domToWorkspace(Blockly.Xml.workspaceToDom(workspace), restored)
+      expect(restored.getTopBlocks(false)[0].getFieldValue('BLOCK_NAME')).toBe('My cube & point')
+      expect(canonicalizeWorkspaceXml(named)).toBe(canonicalizeWorkspaceXml(xml('<block type="geo_special_cube" />')))
+    } finally {
+      workspace.dispose()
+      restored.dispose()
+    }
+  })
+
+  it('updates an existing composite name without adding duplicate fields', () => {
+    const named = nameCompositeBlockXml(xml('<block type="geo_special_cube"><field name="BLOCK_NAME">Old</field></block>'), 'New')
+    const fields = Blockly.utils.xml.textToDom(named).querySelectorAll('field[name="BLOCK_NAME"]')
+    expect(fields).toHaveLength(1)
+    expect(fields[0].textContent).toBe('New')
+  })
+
+  it('leaves unrelated saved blocks alone', () => {
+    const original = xml('<block type="geo_cube" />')
+    expect(nameCompositeBlockXml(original, 'Cube')).toBe(original)
+  })
+})
 
 describe('canonicalizeWorkspaceXml', () => {
   it('treats the same blocks at different positions as identical', () => {

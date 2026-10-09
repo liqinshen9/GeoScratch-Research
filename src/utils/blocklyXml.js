@@ -12,6 +12,8 @@ const IGNORED_DUPLICATE_ATTRIBUTES = new Set(['id', 'x', 'y'])
 export function canonicalizeNode(node) {
   const tagName = node.tagName?.toLowerCase()
   if (!tagName) return ''
+  if (tagName === 'field' && node.getAttribute('name') === 'BLOCK_NAME'
+    && node.parentElement?.getAttribute('type') === 'geo_special_cube') return ''
 
   const attributes = Array.from(node.attributes || [])
     .filter((attribute) => !IGNORED_DUPLICATE_ATTRIBUTES.has(attribute.name.toLowerCase()))
@@ -31,6 +33,25 @@ export function canonicalizeNode(node) {
     .join(' ')
 
   return `${tagName}(${attributes}){${JSON.stringify(text)}}[${children.join('')}]`
+}
+
+export function nameCompositeBlockXml(xmlText, name) {
+  if (!name?.trim()) return xmlText
+  const dom = Blockly.utils.xml.textToDom(xmlText)
+  const blocks = Array.from(dom.querySelectorAll('block[type="geo_special_cube"]'))
+  if (dom.getAttribute('type') === 'geo_special_cube') blocks.unshift(dom)
+  if (!blocks.length) return xmlText
+  for (const block of blocks) {
+    let field = Array.from(block.children).find((child) =>
+      child.tagName.toLowerCase() === 'field' && child.getAttribute('name') === 'BLOCK_NAME')
+    if (!field) {
+      field = Blockly.utils.xml.createElement('field')
+      field.setAttribute('name', 'BLOCK_NAME')
+      block.appendChild(field)
+    }
+    field.textContent = name.trim()
+  }
+  return Blockly.Xml.domToText(dom)
 }
 
 /**

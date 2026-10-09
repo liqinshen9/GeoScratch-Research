@@ -26,7 +26,7 @@ import PresentationProbe from './PresentationProbe'
 import LabelDeclutter from './labels/LabelDeclutter'
 import LabelLayer from './labels/LabelLayer'
 import PivotPlaybackDriver from './PivotPlaybackDriver'
-import { getLabelVisibilityKeysForObject } from './labels/labelData'
+import { getLabelVisibilityKeysForObject, getLabelsForObject } from './labels/labelData'
 import { ZoomInvariantScaler, DashZoomSync, FatLineSync } from './sizing/GlyphSizing'
 import { computeNestingRenderOrders } from '@/utils/nestingRenderOrder'
 import { getObjectFocus } from '@/utils/sceneFocus'
@@ -152,21 +152,26 @@ function Scene({ objects = [], hiddenLabelKeys, controlsRef, onHideLabel, theme,
 
       {objects.map((o, i) => {
         if (!o) return null
+        const labelObjects = [o]
+        o.traverse((child) => {
+          if (child !== o && child.userData.renderNestedLabels) labelObjects.push(child)
+        })
         return (
           <group key={i}>
             {/* MAKE SURE: The objects you feed into this array have `castShadow`
                 set on their meshes, or they won't cast shadows! `receiveShadow` is
                 managed above based on settings.objectsReceiveShadows. */}
             <primitive object={o} />
-            {settings.showLabels && (
+            {settings.showLabels && labelObjects.map((labelObject) => (
               <LabelLayer
-                object3D={o}
+                key={labelObject.uuid}
+                object3D={labelObject}
                 hiddenLabelKeys={hiddenLabelKeys}
                 onHideLabel={onHideLabel}
                 labelDetail={settings.labelDetail}
                 answerState={answer?.state}
               />
-            )}
+            ))}
           </group>
         )
       })}
@@ -205,6 +210,7 @@ export default function Scene3D({
   const didInitialFocusRef = useRef(false)
   const prevObjectCountRef = useRef(0)
   const [hiddenLabelKeys, setHiddenLabelKeys] = useState(() => new Set())
+  const [shownLabelKeys, setShownLabelKeys] = useState(() => new Set())
   const [haloRawTarget, setHaloRawTarget] = useState(null)
   const [haloDilatedTarget, setHaloDilatedTarget] = useState(null)
   // cameraRef/controlsRef populate async (R3F's own render loop), after the
@@ -276,13 +282,16 @@ export default function Scene3D({
     controlsRef.current.update()
   }
 
-  const visibleHiddenLabelKeys = useMemo(
-    () =>
-      extraHiddenLabelKeys?.size
-        ? new Set([...hiddenLabelKeys, ...extraHiddenLabelKeys])
-        : hiddenLabelKeys,
-    [hiddenLabelKeys, extraHiddenLabelKeys],
-  )
+  const visibleHiddenLabelKeys = useMemo(() => {
+    const result = new Set([...hiddenLabelKeys, ...(extraHiddenLabelKeys ?? [])])
+    objects.forEach((object) => object?.traverse((child) => {
+      const keys = getLabelVisibilityKeysForObject(child)
+      getLabelsForObject(child).forEach((label, index) => {
+        if (label.hiddenByDefault && !shownLabelKeys.has(keys[index])) result.add(keys[index])
+      })
+    }))
+    return result
+  }, [objects, hiddenLabelKeys, shownLabelKeys, extraHiddenLabelKeys])
 
   const handleHideLabel = useCallback((labelKey) => {
     setHiddenLabelKeys((current) => {
@@ -295,13 +304,18 @@ export default function Scene3D({
   // Right-click on an object: hide all its labels if any are showing, else
   // reveal all of them.
   const handleToggleObjectLabels = useCallback((labelKeys) => {
+    const allHidden = labelKeys.every((labelKey) => visibleHiddenLabelKeys.has(labelKey))
     setHiddenLabelKeys((current) => {
-      const allHidden = labelKeys.every((labelKey) => current.has(labelKey))
       const next = new Set(current)
       labelKeys.forEach((labelKey) => (allHidden ? next.delete(labelKey) : next.add(labelKey)))
       return next
     })
-  }, [])
+    setShownLabelKeys((current) => {
+      const next = new Set(current)
+      labelKeys.forEach((key) => allHidden ? next.add(key) : next.delete(key))
+      return next
+    })
+  }, [visibleHiddenLabelKeys])
 
   const handleSelectBlockFrom3D = useCallback(
     (blockId) => setSelectedBlockId(blockId),

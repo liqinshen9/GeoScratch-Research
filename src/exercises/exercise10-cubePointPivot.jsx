@@ -83,7 +83,7 @@ function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed 
 
   const tasks = [
     ['cube', 'Create: a Cube with Scalar 2 for side length and Vector (1, 1, 1) for its centre.'],
-    ['point', 'Create: a Point at the input corner P = (0, 2, 2).'],
+    ['point', 'Create: a Point at the input corner P1 = (0, 2, 2).'],
     ['pair', 'My Blocks: save the cube and point as a composite block in My Blocks. Name it however you like. Then select it from My Blocks.'],
     ['cleanup', 'Drag the block of cube and point you created to the bin, leaving only the My Block you just created.'],
     ['pipeline', 'Transform: connect the new block you created to a Transform Pipeline.'],

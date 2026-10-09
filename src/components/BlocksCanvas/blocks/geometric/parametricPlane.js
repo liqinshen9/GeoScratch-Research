@@ -156,11 +156,13 @@ function geoParametricPlaneDefinition(
     {
       anchor: 'point',
       name: window.geoNaming?.nameFor?.(blockId) || 'Plane',
+      nameValueSeparator: '\n',
+      className: 'label--multiline',
       value:
-        'point ' +
-        window.vectorNotation.formatVector(point) +
-        ', normal ' +
-        window.vectorNotation.formatVector(normalUnit),
+        'Point A = ' +
+        window.vectorNotation.formatVector(point).replace('[', '(').replace(']', ')') +
+        '\nNormal n = ' +
+        window.vectorNotation.formatVector(normalRaw).replace('[', '(').replace(']', ')'),
       distanceFactor: 8,
       offset: [0.12, 0.12, 0],
       color: planeColor,

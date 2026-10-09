@@ -7,7 +7,7 @@ import THREE from '@/utils/three'
 
 function fmtVec(v) {
   if (!v) return '[?, ?, ?]'
-  const n = (x) => (Number.isFinite(x) ? +x.toFixed(3) : x)
+  const n = (x) => (Number.isFinite(x) ? (Math.abs(x) < 0.005 ? 0 : x).toFixed(2) : x)
   return `[${n(v.x)}, ${n(v.y)}, ${n(v.z)}]`
 }
 

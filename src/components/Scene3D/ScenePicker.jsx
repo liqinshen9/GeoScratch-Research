@@ -103,6 +103,11 @@ function ScenePicker({ onSelectBlock, onToggleLabels, toggleLabelsOnLeftClick = 
       const hits = raycastAt(event)
       onSelectBlock(resolveSelectedBlockId(hits))
       if (toggleLabelsOnLeftClick) toggleClickedMarkerLabel(hits)
+      else {
+        const owner = hits.map((hit) => findLabelOwner(hit.object, getLabelsForObject))
+          .find((object) => object?.userData.toggleLabelsOnClick)
+        if (owner) onToggleLabels(getLabelVisibilityKeysForObject(owner))
+      }
     }
 
     const handlePointerCancel = () => {

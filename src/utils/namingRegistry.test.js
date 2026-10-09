@@ -7,7 +7,6 @@ import {
   clearCustomName,
   isNameTaken,
   kindForBlockType,
-  refreshNamingCounters,
   findBlockByRefId,
   getRefId,
 } from './namingRegistry'
@@ -16,6 +15,7 @@ import {
 // exist on real Blockly.Block instances (for Blockly.Events.BlockChange and
 // workspace.newBlock to work), not any actual rendering or field behaviour.
 Blockly.Blocks['geo_vector'] = { init() {} }
+Blockly.Blocks['linalg_point'] = { init() {} }
 
 // Blockly.Events.fire defers delivery via requestAnimationFrame + setTimeout
 // (not synchronous), so a BLOCK_CREATE fired by workspace.newBlock() only
@@ -37,7 +37,7 @@ describe('namingRegistry', () => {
     expect(kindForBlockType('not_a_real_type')).toBe(null)
   })
 
-  it('assigns stable, monotonically-numbered names at block-creation time', async () => {
+  it('assigns available names at block-creation time', async () => {
     const ws = new Blockly.Workspace()
     installNamingRegistry(ws)
     const a = await addBlock(ws)
@@ -46,7 +46,7 @@ describe('namingRegistry', () => {
     expect(getDisplayName(b)).toBe('L2')
   })
 
-  it('does not renumber existing blocks when an earlier one is deleted', async () => {
+  it('reuses deleted numbers without renumbering existing blocks', async () => {
     const ws = new Blockly.Workspace()
     installNamingRegistry(ws)
     const a = await addBlock(ws)
@@ -54,7 +54,20 @@ describe('namingRegistry', () => {
     a.dispose()
     const c = await addBlock(ws)
     expect(getDisplayName(b)).toBe('L2')
-    expect(getDisplayName(c)).toBe('L3')
+    expect(getDisplayName(c)).toBe('L1')
+  })
+
+  it('restarts point numbering after the workspace is cleared, including immediate recreation', async () => {
+    const ws = new Blockly.Workspace()
+    installNamingRegistry(ws)
+    await addBlock(ws, 'linalg_point')
+    await addBlock(ws, 'linalg_point')
+    ws.clear()
+    const first = await addBlock(ws, 'linalg_point')
+    const second = await addBlock(ws, 'linalg_point')
+    expect(getDisplayName(first)).toBe('P1')
+    expect(getDisplayName(second)).toBe('P2')
+    ws.dispose()
   })
 
   it('formats the same block differently under short vs. descriptive style', async () => {
@@ -157,7 +170,7 @@ describe('namingRegistry', () => {
     expect(records.map((block) => getDisplayName(block))).toEqual(['L1', 'L2', 'L3'])
   })
 
-  it('continues the sequence after counters are refreshed from a silently-loaded workspace', async () => {
+  it('checks current naming records from a silently-loaded workspace', async () => {
     const ws = new Blockly.Workspace()
     installNamingRegistry(ws)
     // Simulates BlocksCanvas.jsx's restore, which loads with events disabled
@@ -166,13 +179,12 @@ describe('namingRegistry', () => {
     restored.data = JSON.stringify({
       geoScratchNaming: { kind: 'line', number: 7, custom: null, refId: 'ref-7' },
     })
-    refreshNamingCounters(ws)
 
     const next = await addBlock(ws)
-    expect(getDisplayName(next)).toBe('L8')
+    expect(getDisplayName(next)).toBe('L1')
   })
 
-  it('rehydrates its counter from already-persisted block data (e.g. a reloaded workspace)', async () => {
+  it('uses free numbers alongside already-persisted block data', async () => {
     const ws = new Blockly.Workspace()
     const preExisting = ws.newBlock('geo_vector')
     preExisting.data = JSON.stringify({
@@ -184,6 +196,6 @@ describe('namingRegistry', () => {
     expect(getDisplayName(preExisting)).toBe('L2')
 
     const next = await addBlock(ws)
-    expect(getDisplayName(next)).toBe('L3')
+    expect(getDisplayName(next)).toBe('L1')
   })
 })
