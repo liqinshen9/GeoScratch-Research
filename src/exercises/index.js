@@ -8,6 +8,7 @@ import exercise07 from './exercise07-spheres'
 import exercise08 from './exercise08-closerObject'
 import exercise09 from './exercise09-lineInFront'
 import exercise10 from './exercise10-cubePointPivot'
+import exercise11 from './exercise11-createComplexObject'
 
 /**
  * One module per exercise, keyed by the slug id in its URL (/exercise/:id) and
@@ -61,6 +62,7 @@ export const EXERCISE_MODULES = {
   'scale-object': exercise01,
   'rotate-object': exercise02,
   'transform-object': exercise03,
+  'create-complex-object': exercise11,
   'cube-point-pivot-rotation': exercise10,
   'translate-object': exercise04,
   'point-plane-distance': exercise05,

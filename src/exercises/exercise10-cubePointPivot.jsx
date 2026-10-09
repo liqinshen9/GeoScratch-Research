@@ -18,13 +18,13 @@ import { COLOR_ROLES } from '@/store/colorPresets'
 
 const CENTRE = new THREE.Vector3(1, 1, 1)
 const POINT = new THREE.Vector3(0, 2, 2)
-function cubeMatches(block) {
+export function cubeMatches(block) {
   return block?.type === 'geo_cube' && blockMatchesVec3(getInputBlock(block, 'CENTRE'), CENTRE) && scalarInputMatches(block, 'SIDE_LENGTH_INPUT', 2, 1)
 }
-function cubeHasRequiredInputs(block) {
+export function cubeHasRequiredInputs(block) {
   return block?.type === 'geo_cube' && POINT_VECTOR_BLOCK_TYPES.includes(getInputBlock(block, 'CENTRE')?.type) && getInputBlock(block, 'SIDE_LENGTH_INPUT')?.type === 'scalar'
 }
-function pointMatches(block) {
+export function pointMatches(block) {
   return block?.type === 'linalg_point' && blockMatchesVec3(block, POINT)
 }
 function pairMatches(block) {
@@ -35,7 +35,7 @@ function translateMatches(block, value) {
   return block?.type === 'trans_matrix' && ['TX', 'TY', 'TZ'].every((field) => closeNumber(block.getFieldValue(field), value))
 }
 
-function Diagram({ output }) {
+export function Diagram({ output }) {
   const project = ([x, y, z]) => [130 + x * 52 - z * 30, 205 - y * 55 + z * 20]
   const vertices = [[0,0,0],[2,0,0],[2,2,0],[0,2,0],[0,0,2],[2,0,2],[2,2,2],[0,2,2]]
   const polygon = (indices) => indices.map((i) => project(vertices[i]).join(',')).join(' ')
@@ -43,23 +43,23 @@ function Diagram({ output }) {
   const c = project([1,1,1])
   return <svg viewBox="0 0 330 295" role="img" aria-label={output ? 'Output cube: P at (2, 2, 2)' : 'Input cube: upper-left P at (0, 2, 2)'} style={{ width: '100%', maxWidth: 185, display: 'block' }}>
     <rect width="330" height="295" fill="#f8fafc" />
-    {[[3,0,0],[0,3,0],[0,0,3]].map((end, i) => { const a = project([0,0,0]); const b = project(end); return <g key={i}><line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#475569" /><text x={b[0]+5} y={b[1]} fontSize="14">{['X','Y','Z'][i]}</text></g> })}
     <polygon points={polygon([0,1,2,3])} fill="#e4cce9" stroke="#475569" strokeDasharray="4 3" />
     <polygon points={polygon([1,5,6,2])} fill="#9256a0" stroke="#334155" />
     <polygon points={polygon([3,2,6,7])} fill="#c99ad3" stroke="#334155" />
     <polygon points={polygon([4,5,6,7])} fill="#af70bc" fillOpacity="0.8" stroke="#334155" />
+    {[[3,0,0],[0,3,0],[0,0,3]].map((end, i) => { const a = project([0,0,0]); const b = project(end); return <g key={i}><line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#475569" /><text x={b[0]+5} y={b[1]} fontSize="14">{['X','Y','Z'][i]}</text></g> })}
     <circle cx={c[0]} cy={c[1]} r="4" fill="#334155" /><text x={c[0]+8} y={c[1]+18} fontSize="12">C (1, 1, 1)</text>
-    <circle cx={p[0]} cy={p[1]} r="7" fill="#e63946" stroke="white" strokeWidth="2" />
-    <text x={p[0]-20} y={p[1]-14} fontSize="13" fill="#b91c1c">P {output ? '(2, 2, 2)' : '(0, 2, 2)'}</text>
+    <circle cx={p[0]} cy={p[1]} r="7" fill="#2563eb" stroke="white" strokeWidth="2" />
+    <text x={p[0]-20} y={p[1]-14} fontSize="13" fill="#1d4ed8">P {output ? '(2, 2, 2)' : '(0, 2, 2)'}</text>
   </svg>
 }
 function Givens() {
   return <div className="exercise-given-values" aria-label="Input and output images">
-    <section><p>Given is a cube with side length 2 as illustrated in the image below</p><Diagram /></section>
-    <section><p>please manipulate blocks in the toolbox to rotate this cube as illustrated in the image below.</p><Diagram output /></section>
+    <section><p>Use the complex object you saved in My Blocks in the previous exercise: a cube with side length 2, centred at C = (1, 1, 1), and a corner point P = (0, 2, 2).</p><Diagram /></section>
+    <section><p>Rotate the cube and its corner point P together into the orientation shown below. After completing the transformations, the cube’s centre C should be at (1, 1, 1), and P should be at (2, 2, 2).</p><Diagram output /></section>
   </div>
 }
-function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed }) {
+export function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed, tasks = ROTATION_TASKS }) {
   const [checkedSteps, setCheckedSteps] = useState({})
   const pendingCheckRef = useRef(0)
 
@@ -81,16 +81,6 @@ function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed 
     }, 100)
   }
 
-  const tasks = [
-    ['cube', 'Create: a Cube with Scalar 2 for side length and Vector (1, 1, 1) for its centre.'],
-    ['point', 'Create: a Point at the input corner P1 = (0, 2, 2).'],
-    ['pair', 'My Blocks: save the cube and point as a composite block in My Blocks. Name it however you like. Then select it from My Blocks.'],
-    ['cleanup', 'Drag the block of cube and point you created to the bin, leaving only the My Block you just created.'],
-    ['pipeline', 'Transform: connect the new block you created to a Transform Pipeline.'],
-    ['toOrigin', 'Transform: translate by the negative of center C, (-1, -1, -1). The goal is to move the block to the origin.'],
-    ['rotate', 'Transform: Rotate around Y axis by 90 degrees.'],
-    ['back', 'Transform: translate (1, 1, 1) back to its original center C.'],
-  ]
   return <ol className={`exercise-task-steps${passed ? ' is-passed' : ''}`}>{tasks.map(([key, text]) => {
     const wasChecked = checkedSteps[key]
     const showValueFeedback = wasChecked && !steps[key] && partialSteps?.[key]
@@ -112,31 +102,29 @@ function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed 
     </li>
   })}</ol>
 }
+const ROTATION_TASKS = [
+  ['pipeline', 'My Blocks: add the complex object you saved in the previous exercise to the workspace, then connect it to a Transform Pipeline.'],
+  ['toOrigin', 'Transform: translate by (-1, -1, -1) to move the cube’s centre C to the origin.'],
+  ['rotate', 'Transform: rotate around the Y axis by 90 degrees.'],
+  ['back', 'Transform: translate by (1, 1, 1) to move the cube’s centre back to C.'],
+]
 function evaluate({ objects, workspace }) {
   const blocks = (type) => workspace?.getBlocksByType(type, false) ?? []
   const pipeline = blocks('transform_pipeline').find((b) => pairMatches(getInputBlock(b, 'INPUT')))
   const chain = pipelineStepChain(pipeline)
   const pairBlock = getInputBlock(pipeline, 'INPUT')
-  const special = blocks('geo_special_cube').length > 0
   const target = objects.find((o) => o?.userData?.geoType === 'object_with_point' && (!pairBlock || o.userData.srcBlockId === pairBlock.id))
   const cube = target?.children.find((o) => o.userData?.geoType === 'geo_cube')
   const marker = target?.children.find((o) => o.userData?.geoType === 'attached_corner_point')
   target?.updateMatrixWorld(true)
   const poseIsCorrect = Boolean(cube && marker) && vectorMatches(cube.getWorldPosition(new THREE.Vector3()), CENTRE) && vectorMatches(marker.getWorldPosition(new THREE.Vector3()), new THREE.Vector3(2, 2, 2)) && rotationMatches(target, 'Y', 90)
-  const hasOriginalCubeAndPoint = blocks('geo_cube').some(cubeMatches) || blocks('linalg_point').some(pointMatches) || blocks('geo_object_with_point').some(pairMatches)
   const steps = {
-    cube: special || blocks('geo_cube').some(cubeMatches),
-    point: special || blocks('linalg_point').some(pointMatches),
-    pair: special,
-    cleanup: special && !hasOriginalCubeAndPoint,
     pipeline: Boolean(pipeline),
     toOrigin: translateMatches(chain[0], -1),
     rotate: chain[1]?.type === 'rot_matrix' && chain[1].getFieldValue('AXIS') === 'Y' && closeNumber(chain[1].getFieldValue('DEGREES'), 90),
     back: translateMatches(chain[2], 1),
   }
   const partialSteps = {
-    cube: !steps.cube && blocks('geo_cube').some(cubeHasRequiredInputs),
-    point: !steps.point && blocks('linalg_point').some((block) => block.getParent?.()?.type !== 'geo_cube'),
     toOrigin: !steps.toOrigin && chain[0]?.type === 'trans_matrix',
     rotate: !steps.rotate && chain[1]?.type === 'rot_matrix',
     back: !steps.back && chain[2]?.type === 'trans_matrix',
@@ -152,13 +140,13 @@ function evaluate({ objects, workspace }) {
 const solutionXml = `<xml xmlns="https://developers.google.com/blockly/xml">
   <block type="transform_pipeline" x="60" y="60"><value name="INPUT"><block type="geo_special_cube" /></value><statement name="STEPS"><block type="trans_matrix"><field name="TX">-1</field><field name="TY">-1</field><field name="TZ">-1</field><next><block type="rot_matrix"><field name="AXIS">Y</field><field name="DEGREES">90</field><next><block type="trans_matrix"><field name="TX">1</field><field name="TY">1</field><field name="TZ">1</field></block></next></block></next></block></statement></block>
 </xml>`
-function getReusableBlockTemplate({ workspace }) {
+export function getReusableBlockTemplate({ workspace }) {
   const cubes = workspace?.getBlocksByType('geo_cube', false) ?? []
   const points = workspace?.getBlocksByType('linalg_point', false) ?? []
   if (!cubes.some(cubeMatches) || !points.some(pointMatches)) return null
   return {
-    defaultName: 'special block',
-    description: 'Save the cube and its corner point together as special block.',
+    defaultName: 'Cube and corner point',
+    description: 'Save the cube and its corner point together. Enter a name to use in My Blocks in the next exercise.',
     source: 'exercise',
     xmlText: '<xml xmlns="https://developers.google.com/blockly/xml"><block type="geo_special_cube" /></xml>',
   }
@@ -212,7 +200,7 @@ function AnimationButton({ objects, workspace }) {
     usePivotPlaybackStore.getState().play(target)
   }}><FontAwesomeIcon icon="fa-solid fa-play" /> Show animation</button>
 }
-export default { id: 'cube-point-pivot-rotation', kind: 'transform', hideAnswerCard: true, Givens, Steps, evaluate, solutionXml, getReusableBlockTemplate, decorateObjects, AnimationButton, settingsOverrides: {
+export default { id: 'cube-point-pivot-rotation', kind: 'transform', hideAnswerCard: true, Givens, Steps, evaluate, solutionXml, decorateObjects, AnimationButton, settingsOverrides: {
   cubeShowEdges: true,
   showAxes: true,
   showAxisScaleLabels: true,

@@ -100,7 +100,7 @@ export default function ExercisePage({
   toggleLabelsOnLeftClick = false,
 }) {
   const { objects, autoRender, setPendingObjects, setObjects } = useSceneStore()
-  const { workspace } = useWorkspaceStore()
+  const { workspace, userBlocks } = useWorkspaceStore()
   const setExerciseOverrides = useSettingsStore((s) => s.setExerciseOverrides)
   const clearExerciseOverrides = useSettingsStore((s) => s.clearExerciseOverrides)
   const navigate = useNavigate()
@@ -157,7 +157,7 @@ export default function ExercisePage({
 
   // Everything the page needs to know about progress comes from one call into
   // the exercise's own checker.
-  const result = exercise.evaluate({ objects, workspace })
+  const result = exercise.evaluate({ objects, workspace, userBlocks })
   const answerCardClass = `exercise-answer-card${result.correct ? ' is-correct' : ''}${
     result.incorrect ? ' is-incorrect' : ''
   }`

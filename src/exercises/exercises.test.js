@@ -305,6 +305,43 @@ describe('exercise 3 (scale 2 and rotate 45 about Y)', () => {
   })
 })
 
+describe('Create a complex object exercise', () => {
+  const mod = EXERCISE_MODULES['create-complex-object']
+  const cube = () => fakeBlock('geo_cube', {}, {
+    SIDE_LENGTH_INPUT: scalar(2),
+    CENTRE: vec3(1, 1, 1),
+  })
+  const savedPair = {
+    name: 'My named object',
+    xmlText: '<xml><block type="geo_special_cube"><field name="BLOCK_NAME">My named object</field></block></xml>',
+  }
+
+  it('passes on saving without inserting or selecting the saved block', () => {
+    const workspace = fakeWorkspace([cube(), point(0, 2, 2)])
+    const result = mod.evaluate({ workspace, userBlocks: [savedPair] })
+    expect(result.passed).toBe(true)
+    expect(result.steps).toEqual({ cube: true, point: true, pair: true })
+    expect(workspace.getBlocksByType('geo_special_cube')).toHaveLength(0)
+  })
+
+  it('requires a saved composite, rather than just an inserted composite', () => {
+    const workspace = fakeWorkspace([cube(), point(0, 2, 2), specialCubeBlock()])
+    expect(mod.evaluate({ workspace }).steps.pair).toBe(false)
+    expect(mod.evaluate({ workspace, userBlocks: [{ name: 'Cube', xmlText: '<xml><block type="geo_cube" /></xml>' }] }).passed).toBe(false)
+  })
+
+  it('only offers the composite template when both components are correct', () => {
+    expect(mod.getReusableBlockTemplate({ workspace: fakeWorkspace([cube()]) })).toBeNull()
+    expect(mod.getReusableBlockTemplate({ workspace: fakeWorkspace([cube(), point(0, 2, 2)]) }).xmlText).toContain('geo_special_cube')
+    expect(mod.evaluate({ workspace: fakeWorkspace([cube(), point(1, 2, 2)]), userBlocks: [savedPair] }).passed).toBe(false)
+  })
+
+  it('comes directly before the rotation exercise in navigation', () => {
+    expect(getAdjacentExercises(mod.id).next.id).toBe('cube-point-pivot-rotation')
+    expect(getAdjacentExercises('cube-point-pivot-rotation').previous.id).toBe(mod.id)
+  })
+})
+
 describe('Cube and corner point pivot rotation exercise', () => {
   const mod = EXERCISE_MODULES['cube-point-pivot-rotation']
   it('replaces standalone and grouped cube labels while preserving the corner point label', () => {
@@ -346,10 +383,6 @@ describe('Cube and corner point pivot rotation exercise', () => {
 
     expect(result.passed).toBe(true)
     expect(result.steps).toEqual({
-      cube: true,
-      point: true,
-      pair: true,
-      cleanup: true,
       pipeline: true,
       toOrigin: true,
       rotate: true,

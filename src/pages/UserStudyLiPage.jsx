@@ -8,8 +8,9 @@ import PostStudyQuestionnaire from './userStudyLi/PostStudyQuestionnaire'
 import './UserStudyLiPage.css'
 
 const STUDY_EXERCISES = [
+  { id: 'create-complex-object' },
   { id: 'cube-point-pivot-rotation' },
-  { id: 'point-plane-distance', title: 'Calculate distance from point P to a plane 1' },
+  { id: 'point-plane-distance', title: 'Calculate the shortest distance from a point to a plane' },
 ]
 const CURRENT_RESEARCH_ID_KEY = 'userstudyLi.currentResearchId'
 
