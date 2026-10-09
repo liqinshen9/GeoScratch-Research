@@ -108,12 +108,14 @@ function BlockPreview({ type, onSelect, onDragStartBlock }) {
     <div
       ref={itemRef}
       className="palette-block-preview"
+      data-block-type={type}
       title="Click to add or drag into workspace"
     >
       <div className="palette-block-preview__blockly-host" ref={hostRef} />
       <div
         className="palette-block-preview__drag-surface"
         role="button"
+        aria-label={`Add ${type.replace(/^geo_|^linalg_/, '').replaceAll('_', ' ')}`}
         tabIndex={0}
         draggable
         onPointerEnter={handlePointerEnter}

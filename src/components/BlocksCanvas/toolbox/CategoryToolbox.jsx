@@ -7,6 +7,7 @@ export default function CategoryToolbox({ selected, onSelect }) {
         {Object.values(BLOCK_CATEGORIES).map((cat) => (
           <button
             key={cat.id}
+            data-category-id={cat.id}
             type="button"
             className={`category-card category-card--${cat.accent}${selected === cat.id ? ' is-active' : ''}`}
             onClick={() => onSelect(cat.id)}

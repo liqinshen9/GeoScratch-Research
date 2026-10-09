@@ -82,6 +82,7 @@ function AnswerCard({ result, className }) {
 }
 
 export default function ExercisePage({
+  exerciseModule,
   exerciseId: fixedExerciseId,
   exerciseTitle,
   standalone = false,
@@ -118,7 +119,7 @@ export default function ExercisePage({
   const routeOnlyExercise = hasExerciseModule(requestedExerciseId)
     ? getExerciseModule(requestedExerciseId)
     : null
-  const baseExerciseConfig = registeredExercise ??
+  const baseExerciseConfig = exerciseModule ?? registeredExercise ??
     (routeOnlyExercise
       ? {
           id: routeOnlyExercise.id,
@@ -130,7 +131,7 @@ export default function ExercisePage({
     ? { ...baseExerciseConfig, title: exerciseTitle }
     : baseExerciseConfig
   const activeExercise = activeExerciseConfig.id
-  const exercise = getExerciseModule(activeExercise)
+  const exercise = exerciseModule ?? getExerciseModule(activeExercise)
 
   useEffect(() => {
     setStepFeedbackRevision((revision) => revision + 1)
@@ -449,6 +450,7 @@ export default function ExercisePage({
             }}
           />
           <Scene3D
+            cameraPosition={exercise.cameraPosition}
             objects={objects}
             answer={showAnswerHighlight ? answerHighlight : undefined}
             toggleLabelsOnLeftClick={toggleLabelsOnLeftClick}

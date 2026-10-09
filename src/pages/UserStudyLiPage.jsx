@@ -5,6 +5,8 @@ import { generateResearchId } from '@/study/session/researchId'
 import DemographicsQuestionnaire from './userStudyLi/DemographicsQuestionnaire'
 import ConditionQuestionnaire from './userStudyLi/ConditionQuestionnaire'
 import PostStudyQuestionnaire from './userStudyLi/PostStudyQuestionnaire'
+import TutorialWelcome from './userStudyLi/TutorialWelcome'
+import SessionTutorial from './userStudyLi/SessionTutorial'
 import './UserStudyLiPage.css'
 
 const STUDY_EXERCISES = [
@@ -110,6 +112,7 @@ export default function UserStudyLiPage() {
   const [conditionCompleted, setConditionCompleted] = useState(false)
   const [postCompleted, setPostCompleted] = useState(false)
   const [researchId, setResearchId] = useState('')
+  const [tutorialPhase, setTutorialPhase] = useState('welcome')
   const exercise = STUDY_EXERCISES[exerciseIndex]
   const exerciseId = exercise.id
 
@@ -117,6 +120,7 @@ export default function UserStudyLiPage() {
     const nextResearchId = generateResearchId()
     setResearchId(nextResearchId)
     setExerciseIndex(0)
+    setTutorialPhase('welcome')
     setStudyStarted(false)
     setConditionStarted(false)
     setConditionCompleted(false)
@@ -188,8 +192,14 @@ export default function UserStudyLiPage() {
     )
   }
 
+  if (tutorialPhase === 'active') {
+    return <SessionTutorial researchId={researchId} onDone={() => setTutorialPhase('done')} />
+  }
+
   return (
     <div className="app-container flex h-dvh flex-col overflow-hidden">
+      {tutorialPhase === 'welcome' && exerciseIndex === 0 && <TutorialWelcome
+        onFollow={() => setTutorialPhase('active')} onSkip={() => setTutorialPhase('done')} />}
       <main className="flex min-h-0 flex-1 flex-col">
         <ExercisePage
           key={exerciseId}

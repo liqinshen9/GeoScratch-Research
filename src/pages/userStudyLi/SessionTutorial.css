@@ -1,0 +1,45 @@
+.tutorial-welcome { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); margin: 0; padding: 0; border: 0; border-radius: 20px; width: min(760px, calc(100vw - 40px)); max-height: calc(100dvh - 40px); overflow: auto; box-shadow: 0 24px 100px #0f172a50; color: #172642; background: #fffdf8; }
+.tutorial-welcome[open] { display: grid; grid-template-columns: 1fr 1fr; }
+.tutorial-welcome::backdrop { background: #17264270; backdrop-filter: blur(4px); }
+.tutorial-welcome__picture { display: flex; flex-direction: column; justify-content: center; padding: 44px 24px; background: linear-gradient(145deg, #edf4ff, #dce9fd); text-align: center; }
+.tutorial-welcome__picture > span { font-size: 11px; letter-spacing: .15em; color: #365e9b; font-weight: 700; }
+.tutorial-welcome__picture svg { width: 100%; margin: 20px 0; }
+.tutorial-welcome__picture p { font-size: 14px; color: #365e9b; }
+.tutorial-welcome__message { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 48px 36px; gap: 20px; }
+.tutorial-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #4165a0; }
+.tutorial-welcome h2 { font-size: 32px; line-height: 1.15; font-weight: 700; }
+.tutorial-welcome__message p { font-size: 16px; line-height: 1.65; color: #66748a; margin-bottom: 20px; }
+.tutorial-primary { border: 0; border-radius: 8px; background: #1251dc; color: white; font-weight: 600; padding: 12px 20px; cursor: pointer; }
+.tutorial-primary:hover { background: #083ab5; }
+.tutorial-skip { background: transparent; border: 0; color: #637086; cursor: pointer; font-size: 13px; padding: 5px 0; }
+.tutorial-skip:hover { text-decoration: underline; }
+.tutorial-goal > svg { width: 180px; max-width: 100%; margin: 8px auto 16px; }
+.tutorial-goal table { width: 100%; font-family: inherit; font-size: 11px; border-collapse: collapse; margin: 14px 0; }
+.tutorial-goal th, .tutorial-goal td { text-align: left; padding: 8px 3px; border-bottom: 1px solid #d9e4f6; }
+.tutorial-goal > p { margin: 12px 0; }
+.tutorial-coach { position: fixed; z-index: 110; right: 24px; bottom: 24px; width: min(370px, calc(100vw - 40px)); padding: 22px; border: 1px solid #d5e2f7; border-radius: 14px; color: #172642; background: #fff; box-shadow: 0 10px 45px #15356630; }
+.tutorial-coach__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.tutorial-coach h2 { font-size: 21px; font-weight: 700; margin: 12px 0 8px; }
+.tutorial-coach p { font-size: 14px; line-height: 1.6; margin-bottom: 18px; }
+.tutorial-coach__actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.tutorial-coach__actions span { color: #637086; font-size: 12px; }
+.tutorial-coach__actions button { color: #1251dc; background: #edf4ff; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+.tutorial-spotlight, .tutorial-demo { position: fixed; z-index: 100; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
+.tutorial-spotlight path { fill: #142440; opacity: .18; }
+.tutorial-spotlight rect { stroke: #3b82f6; stroke-width: 3; fill: none; }
+.tutorial-block-highlight > .blocklyPath { stroke: #fc3; stroke-width: 3px; }
+.tutorial-table-highlight { background: #fff3bf; outline: 2px solid #fc3; outline-offset: -2px; }
+.tutorial-demo-block, .tutorial-demo-pointer { position: absolute; pointer-events: none; opacity: 0; }
+.tutorial-demo-block.blocklySvg { overflow: visible; background: transparent; border: 0; }
+.tutorial-demo-pointer { width: 30px; height: 38px; }
+.tutorial-demo-input-arrow { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; }
+.tutorial-demo-value { position: absolute; opacity: 0; min-width: 35px; padding: 3px 6px; color: #111; background: white; border: 2px solid #2563eb; border-radius: 4px; text-align: center; white-space: nowrap; font: 14px sans-serif; }
+@media (max-width: 600px) {
+  .tutorial-welcome[open] { grid-template-columns: 1fr; }
+  .tutorial-welcome__picture { padding: 20px; }
+  .tutorial-welcome__picture svg { width: 150px; margin: 0 auto; }
+  .tutorial-welcome__picture p { display: none; }
+  .tutorial-welcome__message { padding: 28px; gap: 14px; }
+  .tutorial-coach { right: 12px; bottom: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .tutorial-demo { display: none; } }
