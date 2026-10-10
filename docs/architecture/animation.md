@@ -1,9 +1,15 @@
-# Animation playback (#38)
+# Step-by-step animation playback
 
-`components/Scene3D/AnimationDriver.jsx`, plus the `animate` closures baked in
-`utils/generateAndRun.js` and `utils/lineTransformAnimation.js`
-([transform-and-line-rebuild.md](transform-and-line-rebuild.md)) and
-`utils/stagedVectorReveal.js`.
+Normal GeoScratch and `/userstudy-Li` use the same exercise modules and their
+**Show animation** buttons. `usePivotPlaybackStore` holds the target and progress;
+`components/Scene3D/PivotPlaybackDriver.jsx` advances `userData.animateSteps`.
+Cube rotation uses `exercises/shared/pivotStepAnimation.js`; point-plane
+construction uses `exercises/shared/pointPlaneStepAnimation.js`. The LI tutorial
+uses `pages/userStudyLi/sphereStepAnimation.js` with the same driver.
+
+The previous selection-based play/pause/scrub transport, playback store, and
+speed/easing/loop settings have been removed. Geometry helpers below remain
+available to construction animations and generated block geometry.
 
 ## The opt-in protocol
 
@@ -12,28 +18,19 @@ closure baked at scene-build time that renders progress 0..1 of whatever that
 object's blocks describe (a transform pipeline interpolating pose, a
 vector-arithmetic group revealing its arrows in sequence, a line t-sweep, ...).
 
-It gets the **raw linear progress** plus the configured easing function and
+It gets the **raw linear progress** plus an easing function and
 applies the ease where it makes sense: a single motion eases the whole 0..1, a
 staged reveal eases each stage's own local progress.
 
 `progress 1` is always the **resting state** = today's static scene.
 
-## AnimationDriver
+## Step playback driver
 
-Headless, mounted under `<Scene>` alongside `<SelectionHighlight>`, same
-pattern: resolve the selected block's 3D object, mutate it each frame, call
-`invalidate()` (`frameloop="demand"`).
-
-- Resolves the target by **stable `srcBlockId`** (or `animAliasBlockIds`), so a
-  scrub position survives edits - a scene rebuild re-bakes the closure and this
-  re-resolves.
-- `animAliasBlockIds` lets a helper block that renders no object of its own
-  (e.g. a `transform_pipeline`) stand in as the selection that drives another
-  object.
-- On selection change / unmount, snaps the previously-animated object back to
-  progress 1.
-- Places the target at the scrub position on selection, manual scrub, and after
-  a rebuild; the play loop drives it directly while playing.
+The exercise chooses its construction target when **Show animation** is clicked.
+The driver mutates that target each frame and calls `invalidate()` because the
+canvas uses `frameloop="demand"`. It uses the step closure's `durationScale`,
+highlights the active construction step, and stops when the target leaves the
+scene. Stopping restores progress 1, the resting construction.
 
 ## Pose-pair baking
 
@@ -86,10 +83,8 @@ used, because those are the terms that vanish at progress 0, 0.5 and 1. The
 variation therefore never disturbs either fixed point. Choosing frequencies
 freely loses the resting position, the foot, or both.
 
-The closure sets `durationScale = 4`. A staged reveal is a short build-up and the
-configured 1.5s suits it; a path has to be followed rather than watched go past.
-`AnimationDriver` divides its per-frame step by that scale, so the speed control
-still applies on top.
+The closure sets `durationScale = 4` because a path needs time to be followed.
+Construction playback can delegate to geometry closures with their own timing.
 
 `makeStagedVectorReveal` propagates the largest `durationScale` among the
 closures it delegates to. Without that the scale never reaches the driver: it
@@ -176,8 +171,8 @@ in the playback, so nothing gets a slot it cannot show.
   gets the same share of the timeline as a top-level one instead of two arrows
   splitting one arrow's worth of time. Either way the scene starts empty and builds from the origin out
   however many blocks drew it. Two `animate` closures can then drive one glyph,
-  which is safe because `AnimationDriver` runs one at a time and snaps the old
-  target back to progress 1 when the selection changes. Delegation can't loop:
+  so a playback consumer must restore its old target to progress 1 before
+  switching targets. Delegation can't loop:
   provenance only ever points at a block that already ran.
 
 - `userData.hiddenBySetting` marks a glyph a setting has switched off (Vector >
@@ -255,9 +250,8 @@ glyph, so nothing ever tries to copy an Object3D out of `userData`.
 `vector_magnitude`'s point-plane form draws nothing, so its `d = ...` label waits
 for the upstream projection's `distance_segment`.
 
-Anchors re-resolve while playing **or scrubbed below progress 1**, plus one
-frame after coming to rest. Scrubbing sets `playing` false, so a playing-only
-check left a moving label behind for the whole scrub.
+Anchors re-resolve while step playback has a target, plus one frame after
+coming to rest so labels settle on their final positions.
 
 ## Gotcha a refactor would reintroduce
 

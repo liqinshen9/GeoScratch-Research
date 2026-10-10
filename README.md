@@ -48,7 +48,7 @@ React 19 + Vite 7, Blockly 12 (block editor), Three.js (3D rendering), Zustand (
 
 ![GeoScratch architecture overview](docs/architecture-overview.png)
 
-Blockly workspace changes are compiled into Three.js objects and published through the scene store for live rendering. Exercise modules decorate and evaluate those objects, while the study, settings, and local workspace persistence flows are kept in their respective modules and stores. See the [architecture documentation](docs/architecture/README.md) for implementation details.
+Blockly workspace changes are compiled into Three.js objects and published through the scene store for live rendering. Normal GeoScratch offers the same three exercises as `/userstudy-Li`: creating a complex object, rotating a cube and its corner point, and finding the shortest distance from a point to a plane. Both routes use the LI exercise presentation and step-by-step animation buttons. The LI questionnaires continue to save JSON files and local backups. See the [architecture documentation](docs/architecture/README.md) for implementation details.
 
 We recommend using **Visual Studio Code (VS Code)** for development and debugging.
 

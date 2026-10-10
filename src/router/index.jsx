@@ -1,9 +1,8 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import Layout from '@/layout/Layout'
 import LandingPage from '@/pages/LandingPage'
-import ExercisePage from '@/pages/ExercisePage'
+import GeoScratchExercisePage from '@/pages/GeoScratchExercisePage'
 import ExerciseBrowserPage from '@/pages/ExerciseBrowserPage'
-import UnitPage from '@/pages/UnitPage'
 import SettingsPage from '@/pages/SettingsPage'
 import SandboxPage from '@/pages/SandboxPage'
 import UserStudyLiPage from '@/pages/UserStudyLiPage'
@@ -27,15 +26,15 @@ const router = createBrowserRouter([
       },
       {
         path: 'exercises/:unitId',
-        element: <UnitPage />,
+        element: <Navigate to="/exercises" replace />,
       },
       {
         path: 'exercise',
-        element: <ExercisePage />,
+        element: <GeoScratchExercisePage />,
       },
       {
         path: 'exercise/:exerciseId',
-        element: <ExercisePage />,
+        element: <GeoScratchExercisePage />,
       },
       {
         path: 'settings',

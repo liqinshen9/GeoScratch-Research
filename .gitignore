@@ -28,3 +28,6 @@ build/
 # Package manager lockfile (standardizing on pnpm)
 package-lock.json
 yarn.lock
+
+# Local rollback archives
+.backups/

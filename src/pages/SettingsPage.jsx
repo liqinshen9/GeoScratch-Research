@@ -4,7 +4,6 @@ import { LINE_STYLES, LINE_COLLISION_STYLES } from '../store/lineStyles'
 import { COLOR_PRESETS, OBJECT_TYPES, OBJECT_COLOR_SETTING_KEYS } from '../store/colorPresets'
 import { forInstance } from '../store/colorSystem'
 import { OBJECT_HIGHLIGHT_STYLES } from '../store/highlightStyles'
-import { ANIMATION_EASINGS, ANIMATION_SPEED_PRESETS } from '../store/animationConfig'
 import { NAMING_STYLES, LABEL_DETAIL_LEVELS } from '../store/namingConfig'
 import { Button } from '@/components/ui/button'
 import { THEMES } from '@/store/themeConfig'
@@ -95,7 +94,9 @@ function ColorRow({ label, type, value, onChange, settingKey }) {
         <label className="settings-label" htmlFor={inputId}>
           {label}
         </label>
-        <p className="settings-description">{value ? 'Fixed color' : 'Automatic (from the preset)'}</p>
+        <p className="settings-description">
+          {value ? 'Fixed color' : 'Automatic (from the preset)'}
+        </p>
         {locked && <LockedHint />}
       </div>
       <div className="settings-color">
@@ -497,44 +498,8 @@ export default function SettingsPage() {
             </div>
           </SettingsSection>
 
-          <SettingsSection title="Animation & Highlighting" className="settings-card--wide">
+          <SettingsSection title="Highlighting" className="settings-card--wide">
             <div className="settings-geometry-grid">
-              <GeometryTile title="Animation">
-                <SelectField
-                  label="Speed"
-                  description="How long a full play-through of a transform-pipeline animation takes. Also set by the transport bar above the 3D view."
-                  value={settings.animationDurationMs}
-                  settingKey="animationDurationMs"
-                  onChange={(e) => updateSetting('animationDurationMs', Number(e.target.value))}
-                >
-                  {ANIMATION_SPEED_PRESETS.map((preset) => (
-                    <option key={preset.label} value={preset.ms}>
-                      {preset.label}
-                    </option>
-                  ))}
-                </SelectField>
-                <SelectField
-                  label="Easing"
-                  description="The acceleration curve the animation follows between its start and end pose."
-                  value={settings.animationEasing}
-                  settingKey="animationEasing"
-                  onChange={(e) => updateSetting('animationEasing', e.target.value)}
-                >
-                  {Object.entries(ANIMATION_EASINGS).map(([key, value]) => (
-                    <option key={key} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </SelectField>
-                <ToggleRow
-                  label="Loop"
-                  description="Repeat the animation from the start instead of stopping once it reaches the end."
-                  checked={settings.animationLoop}
-                  settingKey="animationLoop"
-                  onChange={(v) => updateSetting('animationLoop', v)}
-                />
-              </GeometryTile>
-
               <GeometryTile title="Highlighting">
                 <ToggleRow
                   label="Highlight the selected object"

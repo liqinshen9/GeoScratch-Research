@@ -11,7 +11,6 @@ import HaloDilatePass from './HaloDilatePass'
 import HaloUniformSync from './HaloUniformSync'
 import SelectionHighlight from './SelectionHighlight'
 import AnswerTint from './AnswerTint'
-import AnimationDriver from './AnimationDriver'
 import {
   getAxisColors,
   DEFAULT_CAMERA_POSITION,
@@ -106,7 +105,6 @@ function Scene({ objects = [], hiddenLabelKeys, controlsRef, onHideLabel, theme,
       <DashZoomSync objects={objects} zoomEnabled={settings.zoomInvariantSizing} />
       <SelectionHighlight objects={objects} />
       <AnswerTint objects={objects} state={answer?.state} />
-      <AnimationDriver objects={objects} />
       <PivotPlaybackDriver objects={objects} />
       <LabelDeclutter />
       <ambientLight intensity={isDark ? 0.6 : 0.4} />

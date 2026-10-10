@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { LINE_STYLES, LINE_COLLISION_STYLES } from './lineStyles'
 import { DEFAULT_COLOR_PRESET } from './colorPresets'
 import { OBJECT_HIGHLIGHT_STYLES } from './highlightStyles'
-import { ANIMATION_EASINGS, DEFAULT_ANIMATION_DURATION_MS } from './animationConfig'
 import { NAMING_STYLES, LABEL_DETAIL_LEVELS } from './namingConfig'
 import { THEMES, DEFAULT_THEME, resolveTheme, THEME_STORAGE_KEY } from './themeConfig'
 
@@ -62,9 +61,6 @@ export const DEFAULT_SETTINGS = {
   planeSize: 20,
   objectHighlightEnabled: true,
   objectHighlightStyle: OBJECT_HIGHLIGHT_STYLES.BLINK,
-  animationDurationMs: DEFAULT_ANIMATION_DURATION_MS,
-  animationEasing: ANIMATION_EASINGS.EASE_IN_OUT,
-  animationLoop: false,
   namingStyle: NAMING_STYLES.SHORT,
   labelDetail: LABEL_DETAIL_LEVELS.NAME_ONLY,
 }

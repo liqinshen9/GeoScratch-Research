@@ -6,7 +6,7 @@ import * as Blockly from 'blockly/core'
  * a study build where a participant could reach for it.
  *
  * Clearing runs with Blockly events disabled, the same reasoning as
- * seedBackgroundBlocks: throwing the student's blocks away is not a student
+ * the exercise starter blocks: throwing the student's blocks away is not a student
  * edit, and disposing with events live would arm the post-delete selection
  * suppression in useBlockSelectionSync (#102) and churn the autosave. The load
  * runs with events on so the change listener rebuilds the scene.
@@ -37,29 +37,6 @@ export function fillSolution(workspace, xml, seed) {
     console.error('[GeoScratch] Failed to fill the exercise solution:', err)
     return false
   }
-}
-
-/**
- * The four transform exercises differ only in their pipeline steps, so they
- * share one solution shape: a teapot at the origin at size 1, fed into a
- * transform pipeline carrying `steps`.
- *
- * @param {string} steps  Blockly XML for the statement chain inside STEPS.
- * @returns {string}      A complete workspace XML string.
- */
-export function teapotPipelineSolution(steps) {
-  return `<xml xmlns="https://developers.google.com/blockly/xml">
-  <block type="transform_pipeline" x="60" y="60">
-    <value name="INPUT">
-      <block type="geo_teapot">
-        <value name="SIZE_INPUT">
-          <block type="scalar"><field name="scalar">1</field></block>
-        </value>
-      </block>
-    </value>
-    <statement name="STEPS">${steps}</statement>
-  </block>
-</xml>`
 }
 
 export default fillSolution

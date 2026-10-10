@@ -4,7 +4,6 @@ import THREE from '@/utils/three'
 import { hexToRgba, resolveAnchor } from './labelAnchors'
 import { stepLabelSim } from './labelSim'
 import { clearanceAnchor } from './silhouetteClearance'
-import useAnimationStore from '@/store/useAnimationStore'
 import usePivotPlaybackStore from '@/store/usePivotPlaybackStore'
 
 // Module-level registry, not React context: drei's <Html> mounts into a
@@ -222,16 +221,11 @@ function LabelDeclutter() {
   // An exercise's step-by-step pivot playback moves objects too.
   useEffect(() => {
     const update = () => {
-      const { playing, progress } = useAnimationStore.getState()
-      const animating =
-        playing || progress < 1 || usePivotPlaybackStore.getState().target != null
+      const animating = usePivotPlaybackStore.getState().target != null
       if (playingRef.current && !animating) settleAnchorsRef.current = true
       playingRef.current = animating
     }
-    const unsubscribers = [
-      useAnimationStore.subscribe(update),
-      usePivotPlaybackStore.subscribe(update),
-    ]
+    const unsubscribers = [usePivotPlaybackStore.subscribe(update)]
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe())
   }, [])
 

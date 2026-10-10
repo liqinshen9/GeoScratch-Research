@@ -58,20 +58,6 @@ function fakeWorkspace(blocks) {
   }
 }
 
-/** A teapot mesh posed by an applied transform, as the scene would produce. */
-function posedTeapot({ scale = 1, quaternion = null, position = [0, 0, 0] } = {}) {
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1))
-  // getTransformTargetObject identifies the target by its authored centre and
-  // size, not by its current pose -- those stay at the values the block set.
-  mesh.userData.geoType = 'geo_teapot'
-  mesh.userData.centre = new THREE.Vector3(0, 0, 0)
-  mesh.userData.size = 1
-  mesh.scale.setScalar(scale)
-  mesh.position.set(...position)
-  if (quaternion) mesh.quaternion.copy(quaternion)
-  return mesh
-}
-
 function posedCubeWithPoint({ quaternion = null, position = [1, 1, 1] } = {}) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2))
   mesh.userData.geoType = 'geo_cube'
@@ -92,7 +78,6 @@ function posedCubeWithPoint({ quaternion = null, position = [1, 1, 1] } = {}) {
 const quatAbout = (axis, degrees) =>
   new THREE.Quaternion().setFromAxisAngle(axis, THREE.MathUtils.degToRad(degrees))
 
-const teapotBlock = () => fakeBlock('geo_teapot', {}, { SIZE_INPUT: scalar(1) })
 const specialCubeBlock = () => fakeBlock('geo_special_cube')
 
 function pipelineTo(target, steps) {
@@ -101,6 +86,11 @@ function pipelineTo(target, steps) {
 }
 
 describe('exercise registry', () => {
+  it('offers only the three LI exercises, in the same order', () => {
+    const ids = ['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance']
+    expect(EXERCISES.map(({ id }) => id)).toEqual(ids)
+    expect(Object.keys(EXERCISE_MODULES)).toEqual(ids)
+  })
   it('has a module for every exercise listed in data/exercises.js', () => {
     EXERCISES.forEach(({ id }) => {
       expect(EXERCISE_MODULES[id], `exercise ${id}`).toBeDefined()
@@ -185,8 +175,8 @@ describe('exercise registry', () => {
   })
 
   it('falls back to the first exercise for an unknown id', () => {
-    expect(getExerciseModule('does-not-exist').id).toBe('scale-object')
-    expect(getExerciseModule(undefined).id).toBe('scale-object')
+    expect(getExerciseModule('does-not-exist').id).toBe('create-complex-object')
+    expect(getExerciseModule(undefined).id).toBe('create-complex-object')
   })
 
   it('returns a non-passing result for an empty workspace', () => {
@@ -201,119 +191,21 @@ describe('exercise registry', () => {
   })
 })
 
-describe('exercise 1 (scale by 3)', () => {
-  const mod = EXERCISE_MODULES['scale-object']
-
-  it('passes when the teapot is scaled by 3 via a pipeline step', () => {
-    const teapot = teapotBlock()
-    const workspace = fakeWorkspace([
-      pipelineTo(teapot, [fakeBlock('scale_matrix', { SX: 3, SY: 3, SZ: 3 })]),
-    ])
-    const result = mod.evaluate({ objects: [posedTeapot({ scale: 3 })], workspace })
-
-    expect(result.passed).toBe(true)
-    expect(result.steps).toEqual({ teapot: true, pipeline: true, scale: true })
-  })
-
-  it('does not pass on the wrong scale factor', () => {
-    const teapot = teapotBlock()
-    const workspace = fakeWorkspace([
-      pipelineTo(teapot, [fakeBlock('scale_matrix', { SX: 2, SY: 2, SZ: 2 })]),
-    ])
-    const result = mod.evaluate({ objects: [posedTeapot({ scale: 2 })], workspace })
-
-    expect(result.passed).toBe(false)
-    expect(result.incorrect).toBe(true)
-  })
-
-  it('does not pass when the object is scaled but no pipeline step produced it', () => {
-    // Guards the "typed the answer in" case: the pose is right, the working is missing.
-    const workspace = fakeWorkspace([teapotBlock()])
-    const result = mod.evaluate({ objects: [posedTeapot({ scale: 3 })], workspace })
-
-    expect(result.passed).toBe(false)
-    // The card still reads as correct -- the pose genuinely matches.
-    expect(result.correct).toBe(true)
-  })
-
-  it('is neither correct nor incorrect before anything is built', () => {
-    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([]) })
-    expect(result.correct).toBe(false)
-    expect(result.incorrect).toBe(false)
-  })
-})
-
-describe('exercise 2 (rotate 90 about Z)', () => {
-  const mod = EXERCISE_MODULES['rotate-object']
-
-  it('passes for a 90 degree Z rotation', () => {
-    const workspace = fakeWorkspace([
-      pipelineTo(teapotBlock(), [fakeBlock('rot_matrix', { AXIS: 'Z', DEGREES: 90 })]),
-    ])
-    const objects = [posedTeapot({ quaternion: quatAbout(new THREE.Vector3(0, 0, 1), 90) })]
-
-    expect(mod.evaluate({ objects, workspace }).passed).toBe(true)
-  })
-
-  it('does not pass for a rotation about the wrong axis', () => {
-    const workspace = fakeWorkspace([
-      pipelineTo(teapotBlock(), [fakeBlock('rot_matrix', { AXIS: 'Y', DEGREES: 90 })]),
-    ])
-    const objects = [posedTeapot({ quaternion: quatAbout(new THREE.Vector3(0, 1, 0), 90) })]
-
-    expect(mod.evaluate({ objects, workspace }).passed).toBe(false)
-  })
-})
-
-describe('exercise 3 (scale 2 and rotate 45 about Y)', () => {
-  const mod = EXERCISE_MODULES['transform-object']
-
-  const bothSteps = () => [
-    fakeBlock('scale_matrix', { SX: 2, SY: 2, SZ: 2 }),
-    fakeBlock('rot_matrix', { AXIS: 'Y', DEGREES: 45 }),
-  ]
-  const posed = () =>
-    posedTeapot({ scale: 2, quaternion: quatAbout(new THREE.Vector3(0, 1, 0), 45) })
-
-  it('passes when both steps are present', () => {
-    const workspace = fakeWorkspace([pipelineTo(teapotBlock(), bothSteps())])
-    const result = mod.evaluate({ objects: [posed()], workspace })
-
-    expect(result.passed).toBe(true)
-    expect(result.steps.scale).toBe(true)
-    expect(result.steps.rotate).toBe(true)
-  })
-
-  it('accepts the two steps in either order', () => {
-    const workspace = fakeWorkspace([pipelineTo(teapotBlock(), bothSteps().reverse())])
-    expect(mod.evaluate({ objects: [posed()], workspace }).passed).toBe(true)
-  })
-
-  it('does not pass with only the scale step', () => {
-    const workspace = fakeWorkspace([
-      pipelineTo(teapotBlock(), [fakeBlock('scale_matrix', { SX: 2, SY: 2, SZ: 2 })]),
-    ])
-    const result = mod.evaluate({ objects: [posedTeapot({ scale: 2 })], workspace })
-
-    expect(result.passed).toBe(false)
-    expect(result.steps.scale).toBe(true)
-    expect(result.steps.rotate).toBe(false)
-  })
-
-  it('exposes seedWorkspace for its decorative blocks', () => {
-    expect(mod.seedWorkspace).toBeTypeOf('function')
-  })
-})
-
 describe('Create a complex object exercise', () => {
   const mod = EXERCISE_MODULES['create-complex-object']
-  const cube = () => fakeBlock('geo_cube', {}, {
-    SIDE_LENGTH_INPUT: scalar(2),
-    CENTRE: vec3(1, 1, 1),
-  })
+  const cube = () =>
+    fakeBlock(
+      'geo_cube',
+      {},
+      {
+        SIDE_LENGTH_INPUT: scalar(2),
+        CENTRE: vec3(1, 1, 1),
+      },
+    )
   const savedPair = {
     name: 'My named object',
-    xmlText: '<xml><block type="geo_special_cube"><field name="BLOCK_NAME">My named object</field></block></xml>',
+    xmlText:
+      '<xml><block type="geo_special_cube"><field name="BLOCK_NAME">My named object</field></block></xml>',
   }
 
   it('passes on saving without inserting or selecting the saved block', () => {
@@ -327,13 +219,23 @@ describe('Create a complex object exercise', () => {
   it('requires a saved composite, rather than just an inserted composite', () => {
     const workspace = fakeWorkspace([cube(), point(0, 2, 2), specialCubeBlock()])
     expect(mod.evaluate({ workspace }).steps.pair).toBe(false)
-    expect(mod.evaluate({ workspace, userBlocks: [{ name: 'Cube', xmlText: '<xml><block type="geo_cube" /></xml>' }] }).passed).toBe(false)
+    expect(
+      mod.evaluate({
+        workspace,
+        userBlocks: [{ name: 'Cube', xmlText: '<xml><block type="geo_cube" /></xml>' }],
+      }).passed,
+    ).toBe(false)
   })
 
   it('only offers the composite template when both components are correct', () => {
     expect(mod.getReusableBlockTemplate({ workspace: fakeWorkspace([cube()]) })).toBeNull()
-    expect(mod.getReusableBlockTemplate({ workspace: fakeWorkspace([cube(), point(0, 2, 2)]) }).xmlText).toContain('geo_special_cube')
-    expect(mod.evaluate({ workspace: fakeWorkspace([cube(), point(1, 2, 2)]), userBlocks: [savedPair] }).passed).toBe(false)
+    expect(
+      mod.getReusableBlockTemplate({ workspace: fakeWorkspace([cube(), point(0, 2, 2)]) }).xmlText,
+    ).toContain('geo_special_cube')
+    expect(
+      mod.evaluate({ workspace: fakeWorkspace([cube(), point(1, 2, 2)]), userBlocks: [savedPair] })
+        .passed,
+    ).toBe(false)
   })
 
   it('comes directly before the rotation exercise in navigation', () => {
@@ -407,99 +309,6 @@ describe('Cube and corner point pivot rotation exercise', () => {
   })
 })
 
-describe('exercise 4 (translate by (3,0,0))', () => {
-  const mod = EXERCISE_MODULES['translate-object']
-
-  it('passes for the target translation', () => {
-    const workspace = fakeWorkspace([
-      pipelineTo(teapotBlock(), [fakeBlock('trans_matrix', { TX: 3, TY: 0, TZ: 0 })]),
-    ])
-    const objects = [posedTeapot({ position: [3, 0, 0] })]
-
-    expect(mod.evaluate({ objects, workspace }).passed).toBe(true)
-  })
-
-  it('does not pass for a translation along the wrong axis', () => {
-    const workspace = fakeWorkspace([
-      pipelineTo(teapotBlock(), [fakeBlock('trans_matrix', { TX: 0, TY: 3, TZ: 0 })]),
-    ])
-    const objects = [posedTeapot({ position: [0, 3, 0] })]
-
-    expect(mod.evaluate({ objects, workspace }).passed).toBe(false)
-  })
-})
-
-describe('exercise 7 (distance between spheres)', () => {
-  const mod = EXERCISE_MODULES['sphere-distance']
-
-  // |B - A| = |(7, -3, 5)| = sqrt(83); minus radii 1.3 and 0.9.
-  const EXPECTED = Math.sqrt(83) - 1.3 - 0.9
-
-  function solvedWorkspace() {
-    const centreA = point(-4, 2, 1)
-    const centreB = point(3, -1, 6)
-    const sphereA = fakeBlock('geo_sphere', {}, { CENTRE: centreA, RADIUS_INPUT: scalar(1.3) })
-    const sphereB = fakeBlock('geo_sphere', {}, { CENTRE: centreB, RADIUS_INPUT: scalar(0.9) })
-    const difference = fakeBlock(
-      'vector_arithmetic',
-      { OP: 'subtract' },
-      { U: centreB, V: centreA },
-    )
-    const magnitude = fakeBlock('vector_magnitude', {}, { V: difference })
-    const radiusSum = fakeBlock(
-      'scalar_arithmetic',
-      { OP: 'add' },
-      { A: scalar(1.3), B: scalar(0.9) },
-    )
-    const answer = fakeBlock(
-      'scalar_arithmetic',
-      { OP: 'subtract' },
-      { A: magnitude, B: radiusSum },
-    )
-    return { workspace: fakeWorkspace([sphereA, sphereB, answer]), answer }
-  }
-
-  const scalarResult = (blockId, value) => ({
-    userData: { geoType: 'scalar_arithmetic_result', srcBlockId: blockId, value },
-  })
-
-  it('passes on a fully built solution', () => {
-    const { workspace, answer } = solvedWorkspace()
-    const result = mod.evaluate({ objects: [scalarResult(answer.id, EXPECTED)], workspace })
-
-    expect(result.passed).toBe(true)
-    expect(result.answer.value).toBeCloseTo(EXPECTED)
-    expect(result.steps).toEqual({
-      spheres: true,
-      difference: true,
-      magnitude: true,
-      distance: true,
-    })
-  })
-
-  it('reads the answer from the radius-subtracting block, not any loose scalar', () => {
-    // The centre-to-centre magnitude is also a scalar in the workspace; picking
-    // it up would report the wrong answer as correct-looking.
-    const { workspace, answer } = solvedWorkspace()
-    const objects = [
-      { userData: { geoType: 'scalar_arithmetic_result', srcBlockId: 'unrelated', value: 999 } },
-      scalarResult(answer.id, EXPECTED),
-    ]
-
-    expect(mod.evaluate({ objects, workspace }).answer.value).toBeCloseTo(EXPECTED)
-  })
-
-  it('does not pass when the spheres have the wrong radii', () => {
-    const centreA = point(-4, 2, 1)
-    const sphereA = fakeBlock('geo_sphere', {}, { CENTRE: centreA, RADIUS_INPUT: scalar(5) })
-    const workspace = fakeWorkspace([sphereA])
-
-    const result = mod.evaluate({ objects: [], workspace })
-    expect(result.passed).toBe(false)
-    expect(result.steps.spheres).toBe(false)
-  })
-})
-
 describe('exercise 5 (point to plane)', () => {
   const mod = EXERCISE_MODULES['point-plane-distance']
 
@@ -519,7 +328,12 @@ describe('exercise 5 (point to plane)', () => {
     return fakeBlock('linalg_vec3', { X: 0.5, Y: 1, Z: 0.5 }, { ORIGIN: origin })
   }
 
-  function stepFive({ enteredQ, actualQ = [2.25, -1.5, 3.75], withMagnitude = false, withoutDifference = false }) {
+  function stepFive({
+    enteredQ,
+    actualQ = [2.25, -1.5, 3.75],
+    withMagnitude = false,
+    withoutDifference = false,
+  }) {
     const q = pointOnExercisePlane()
     const difference = fakeBlock(
       'vector_arithmetic',
@@ -529,7 +343,9 @@ describe('exercise 5 (point to plane)', () => {
     const normal = normalFrom(point(...enteredQ))
     const projection = fakeBlock('vector_project', {}, { U: difference, V: normal })
     const magnitude = fakeBlock('vector_magnitude', {}, { V: projection })
-    const workspace = fakeWorkspace(withoutDifference ? [q, normal] : withMagnitude ? [magnitude] : [difference, normal])
+    const workspace = fakeWorkspace(
+      withoutDifference ? [q, normal] : withMagnitude ? [magnitude] : [difference, normal],
+    )
     const objects = [
       {
         userData: {
@@ -539,7 +355,10 @@ describe('exercise 5 (point to plane)', () => {
         },
       },
     ]
-    if (withMagnitude) objects.push({ userData: { geoType: 'point_plane_distance_projection_magnitude', distance: 6.94 } })
+    if (withMagnitude)
+      objects.push({
+        userData: { geoType: 'point_plane_distance_projection_magnitude', distance: 6.94 },
+      })
     return mod.evaluate({ objects, workspace })
   }
 
@@ -570,7 +389,9 @@ describe('exercise 5 (point to plane)', () => {
   })
 
   it('still rejects an incorrect normal origin when step 4 is absent', () => {
-    expect(stepFive({ enteredQ: [2.25, -1.5, 4], withoutDifference: true }).steps.normalFromQ).toBe(false)
+    expect(stepFive({ enteredQ: [2.25, -1.5, 4], withoutDifference: true }).steps.normalFromQ).toBe(
+      false,
+    )
   })
 
   it('accepts Q1 coordinates copied from the two-decimal scene label', () => {
@@ -627,29 +448,5 @@ describe('exercise 5 (point to plane)', () => {
 
   it('offers a reusable block template', () => {
     expect(mod.reusableBlockTemplate.xmlText).toContain('point_plane_distance')
-  })
-})
-
-describe('exercise 6 (skew lines)', () => {
-  const mod = EXERCISE_MODULES['skew-lines-distance']
-
-  it('recognises both given lines', () => {
-    const line1 = fakeBlock('geo_vector', {}, { POS: point(1, 2, 0), DIR: vec3(1, 2, 3) })
-    const line2 = fakeBlock('geo_vector', {}, { POS: point(5, 5, -3), DIR: vec3(2, -1, 1) })
-
-    expect(
-      mod.evaluate({ objects: [], workspace: fakeWorkspace([line1, line2]) }).steps.lines,
-    ).toBe(true)
-  })
-
-  it('does not accept only one of the two lines', () => {
-    const line1 = fakeBlock('geo_vector', {}, { POS: point(1, 2, 0), DIR: vec3(1, 2, 3) })
-
-    expect(mod.evaluate({ objects: [], workspace: fakeWorkspace([line1]) }).steps.lines).toBe(false)
-  })
-
-  it('reads the distance straight off an Intersect 3D result', () => {
-    const objects = [{ userData: { geoType: 'geo_line_intersection', distance: 4.24 } }]
-    expect(mod.evaluate({ objects, workspace: fakeWorkspace([]) }).answer.value).toBeCloseTo(4.24)
   })
 })
