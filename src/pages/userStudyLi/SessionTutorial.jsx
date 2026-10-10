@@ -296,8 +296,7 @@ export default function SessionTutorial({ researchId, onDone }) {
   return <div className="app-container flex h-dvh flex-col overflow-hidden">
     <main className="flex min-h-0 flex-1 flex-col">
       <ExercisePage exerciseModule={tutorialExercise} standalone
-        workspaceId={`userstudy-Li-${researchId}-tutorial`}
-        trackingEnabled={false} workspaceCloudSyncEnabled={false} showDebugSolution={false}
+        workspaceId={`userstudy-Li-${researchId}-tutorial`} showDebugSolution={false}
         showAnswerHighlight={false} hideAnimationTransport wideTaskPanel
         toggleLabelsOnLeftClick onLabelsToggle={() => setLabelToggleCount((count) => count + 1)} />
       <TutorialGuide onDone={onDone} labelToggleCount={labelToggleCount} />

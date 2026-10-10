@@ -3,13 +3,12 @@ import { useEffect, useState } from 'react'
 /**
  * The radio group for a "look and answer" exercise (08/09). The exercise module
  * supplies an `mcq` descriptor ({ prompt, choices, correctId }); ExercisePage
- * renders this and forwards the picked choice to attempt tracking via `onPick`.
+ * renders this and uses the picked choice for pass/fail feedback.
  *
  * @param {{ prompt: string, choices: {id: string, label: string}[], correctId: string }} mcq
- * @param {(choiceId: string, correctId: string) => void} [onPick]
  * @param {(picked: string | null) => void} [onPickedChange]  drives ExercisePage's `passed`
  */
-export default function PerceptualQuestion({ mcq, onPick, onPickedChange }) {
+export default function PerceptualQuestion({ mcq, onPickedChange }) {
   const [picked, setPicked] = useState(null)
 
   // Reset when the question changes (ExercisePage keys the page by exercise, so
@@ -24,7 +23,6 @@ export default function PerceptualQuestion({ mcq, onPick, onPickedChange }) {
 
   const choose = (id) => {
     setPicked(id)
-    onPick?.(id, mcq.correctId)
   }
 
   return (

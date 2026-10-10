@@ -22,7 +22,6 @@ import { useResolvedTheme } from '@/hooks/useThemeSync'
 import { CameraHandle, HeadLight } from './HeadLight'
 import { BoundingBoxRoom, Axes, FadedGrid } from './SceneFurniture'
 import ScenePicker from './ScenePicker'
-import PresentationProbe from './PresentationProbe'
 import LabelDeclutter from './labels/LabelDeclutter'
 import LabelLayer from './labels/LabelLayer'
 import PivotPlaybackDriver from './PivotPlaybackDriver'
@@ -162,16 +161,17 @@ function Scene({ objects = [], hiddenLabelKeys, controlsRef, onHideLabel, theme,
                 set on their meshes, or they won't cast shadows! `receiveShadow` is
                 managed above based on settings.objectsReceiveShadows. */}
             <primitive object={o} />
-            {settings.showLabels && labelObjects.map((labelObject) => (
-              <LabelLayer
-                key={labelObject.uuid}
-                object3D={labelObject}
-                hiddenLabelKeys={hiddenLabelKeys}
-                onHideLabel={onHideLabel}
-                labelDetail={settings.labelDetail}
-                answerState={answer?.state}
-              />
-            ))}
+            {settings.showLabels &&
+              labelObjects.map((labelObject) => (
+                <LabelLayer
+                  key={labelObject.uuid}
+                  object3D={labelObject}
+                  hiddenLabelKeys={hiddenLabelKeys}
+                  onHideLabel={onHideLabel}
+                  labelDetail={settings.labelDetail}
+                  answerState={answer?.state}
+                />
+              ))}
           </group>
         )
       })}
@@ -181,23 +181,11 @@ function Scene({ objects = [], hiddenLabelKeys, controlsRef, onHideLabel, theme,
 
 const SCENE_BACKGROUND_COLOR = { light: '#ffffff', dark: '#0b111b' }
 
-/**
- * `interactive={false}`, `onPresented`, `hiddenLabelKeys` and `onObjectClick`
- * exist for the study trial runner: they change input, label visibility and the
- * camera-only overlays (gizmo, view buttons), never how the scene itself is
- * drawn. See docs/architecture/study-phase1.md#same-3d-view.
- */
 export default function Scene3D({
   objects = [],
   answer,
-  interactive = true,
-  onPresented,
-  hiddenLabelKeys: extraHiddenLabelKeys,
-  onObjectClick,
   toggleLabelsOnLeftClick = false,
   onLabelsToggle,
-  // Where the camera starts. Only a non-interactive view has any business
-  // changing it: with no orbiting, the fixed distance is the whole framing.
   cameraPosition = DEFAULT_CAMERA_POSITION,
 }) {
   const { settings, updateSetting } = useSettingsStore()
@@ -284,15 +272,17 @@ export default function Scene3D({
   }
 
   const visibleHiddenLabelKeys = useMemo(() => {
-    const result = new Set([...hiddenLabelKeys, ...(extraHiddenLabelKeys ?? [])])
-    objects.forEach((object) => object?.traverse((child) => {
-      const keys = getLabelVisibilityKeysForObject(child)
-      getLabelsForObject(child).forEach((label, index) => {
-        if (label.hiddenByDefault && !shownLabelKeys.has(keys[index])) result.add(keys[index])
-      })
-    }))
+    const result = new Set(hiddenLabelKeys)
+    objects.forEach((object) =>
+      object?.traverse((child) => {
+        const keys = getLabelVisibilityKeysForObject(child)
+        getLabelsForObject(child).forEach((label, index) => {
+          if (label.hiddenByDefault && !shownLabelKeys.has(keys[index])) result.add(keys[index])
+        })
+      }),
+    )
     return result
-  }, [objects, hiddenLabelKeys, shownLabelKeys, extraHiddenLabelKeys])
+  }, [objects, hiddenLabelKeys, shownLabelKeys])
 
   const handleHideLabel = useCallback((labelKey) => {
     setHiddenLabelKeys((current) => {
@@ -304,46 +294,27 @@ export default function Scene3D({
 
   // Right-click on an object: hide all its labels if any are showing, else
   // reveal all of them.
-  const handleToggleObjectLabels = useCallback((labelKeys) => {
-    const allHidden = labelKeys.every((labelKey) => visibleHiddenLabelKeys.has(labelKey))
-    setHiddenLabelKeys((current) => {
-      const next = new Set(current)
-      labelKeys.forEach((labelKey) => (allHidden ? next.delete(labelKey) : next.add(labelKey)))
-      return next
-    })
-    setShownLabelKeys((current) => {
-      const next = new Set(current)
-      labelKeys.forEach((key) => allHidden ? next.add(key) : next.delete(key))
-      return next
-    })
-    if (labelKeys.length) onLabelsToggle?.({ labelKeys, visible: allHidden })
-  }, [visibleHiddenLabelKeys, onLabelsToggle])
+  const handleToggleObjectLabels = useCallback(
+    (labelKeys) => {
+      const allHidden = labelKeys.every((labelKey) => visibleHiddenLabelKeys.has(labelKey))
+      setHiddenLabelKeys((current) => {
+        const next = new Set(current)
+        labelKeys.forEach((labelKey) => (allHidden ? next.delete(labelKey) : next.add(labelKey)))
+        return next
+      })
+      setShownLabelKeys((current) => {
+        const next = new Set(current)
+        labelKeys.forEach((key) => (allHidden ? next.add(key) : next.delete(key)))
+        return next
+      })
+      if (labelKeys.length) onLabelsToggle?.({ labelKeys, visible: allHidden })
+    },
+    [visibleHiddenLabelKeys, onLabelsToggle],
+  )
 
   const handleSelectBlockFrom3D = useCallback(
     (blockId) => setSelectedBlockId(blockId),
     [setSelectedBlockId],
-  )
-
-  // Non-interactive only: a left click reports the top-level object clicked
-  // instead of selecting its block.
-  const handleObjectClickFrom3D = useCallback(
-    (blockId) => {
-      if (blockId == null) return
-      const object = objects.find((o) => String(o?.userData?.srcBlockId) === blockId)
-      if (object) onObjectClick?.(object)
-    },
-    [objects, onObjectClick],
-  )
-  const ignoreLabelToggle = useCallback(() => {}, [])
-
-  // Non-interactive: a click on a label pill counts as a click on its object,
-  // so the editor's persistent click-to-hide never fires.
-  const handleLabelClickFrom3D = useCallback(
-    (labelKey) => {
-      const object = objects.find((o) => o && getLabelVisibilityKeysForObject(o).includes(labelKey))
-      if (object) onObjectClick?.(object)
-    },
-    [objects, onObjectClick],
   )
 
   return (
@@ -358,32 +329,21 @@ export default function Scene3D({
         >
           <OrbitControls
             makeDefault
-            enabled={interactive}
             minDistance={MIN_CAMERA_DISTANCE}
             maxDistance={MAX_CAMERA_DISTANCE}
             ref={handleControlsReady}
           />
           <CameraHandle onReady={handleCameraReady} />
-          {interactive ? (
-            <ScenePicker
-              onSelectBlock={handleSelectBlockFrom3D}
-              onToggleLabels={handleToggleObjectLabels}
-              toggleLabelsOnLeftClick={toggleLabelsOnLeftClick}
-            />
-          ) : (
-            onObjectClick && (
-              <ScenePicker
-                onSelectBlock={handleObjectClickFrom3D}
-                onToggleLabels={ignoreLabelToggle}
-              />
-            )
-          )}
-          {onPresented && <PresentationProbe objects={objects} onPresented={onPresented} />}
+          <ScenePicker
+            onSelectBlock={handleSelectBlockFrom3D}
+            onToggleLabels={handleToggleObjectLabels}
+            toggleLabelsOnLeftClick={toggleLabelsOnLeftClick}
+          />
           <Scene
             objects={objects}
             hiddenLabelKeys={visibleHiddenLabelKeys}
             controlsRef={controlsRef}
-            onHideLabel={interactive ? handleHideLabel : handleLabelClickFrom3D}
+            onHideLabel={handleHideLabel}
             theme={resolvedTheme}
             answer={answer}
           />
@@ -394,7 +354,7 @@ export default function Scene3D({
           {/* Screen-space orientation gizmo -- an alternative to the in-scene
               axes that doesn't take up world space; the in-scene axes can be
               hidden via the toggle below and this still shows X/Y/Z. */}
-          {interactive && settings.showAxisGizmo && (
+          {settings.showAxisGizmo && (
             <GizmoHelper alignment="top-right" margin={[40, 40]}>
               <GizmoViewport
                 axisColors={[gizmoAxisColors.x, gizmoAxisColors.y, gizmoAxisColors.z]}
@@ -407,56 +367,47 @@ export default function Scene3D({
             </GizmoHelper>
           )}
         </Canvas>
-        {interactive && (
-          <div className="scene-view-controls">
-            {/* Any additional buttons stack above Reset View, which stays
+        <div className="scene-view-controls">
+          {/* Any additional buttons stack above Reset View, which stays
               pinned in the true bottom-right corner. */}
-            {settings.showAxisToggleButton && (
-              <button
-                className={`scene-view-btn${settings.showAxes ? ' scene-view-btn--active' : ''}`}
-                onClick={() => updateSetting('showAxes', !settings.showAxes)}
-                aria-label={settings.showAxes ? 'Hide axes' : 'Show axes'}
-                title={settings.showAxes ? 'Hide axes' : 'Show axes'}
-              >
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                  <path
-                    d="M12 21V5M12 5l-4 4M12 5l4 4M21 12H5M5 12l4-4M5 12l4 4"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            )}
+          {settings.showAxisToggleButton && (
             <button
-              className="scene-view-btn"
-              onClick={resetDefaultView}
-              aria-label="Reset to default 3D view"
-              title="Default view"
+              className={`scene-view-btn${settings.showAxes ? ' scene-view-btn--active' : ''}`}
+              onClick={() => updateSetting('showAxes', !settings.showAxes)}
+              aria-label={settings.showAxes ? 'Hide axes' : 'Show axes'}
+              title={settings.showAxes ? 'Hide axes' : 'Show axes'}
             >
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="6.2"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                />
-                <circle cx="12" cy="12" r="2.2" fill="currentColor" />
                 <path
-                  d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"
+                  d="M12 21V5M12 5l-4 4M12 5l4 4M21 12H5M5 12l4-4M5 12l4 4"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="1.8"
                   strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
               </svg>
             </button>
-          </div>
-        )}
+          )}
+          <button
+            className="scene-view-btn"
+            onClick={resetDefaultView}
+            aria-label="Reset to default 3D view"
+            title="Default view"
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <circle cx="12" cy="12" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+              <circle cx="12" cy="12" r="2.2" fill="currentColor" />
+              <path
+                d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   )

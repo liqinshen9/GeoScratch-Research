@@ -29,7 +29,7 @@ import exercise11 from './exercise11-createComplexObject'
  *   mcq                              { prompt, choices: [{id, label}], correctId }
  *                                     for a 'perceptual' exercise. ExercisePage
  *                                     renders it via shared/PerceptualQuestion
- *                                     and logs the pick to exercise_attempts.
+ *                                     and uses the pick for pass/fail feedback.
  *   solutionXml                       Blockly XML for a worked solution, offered
  *                                     behind ExercisePage's dev-only "Fill
  *                                     solution" control. Gated on

@@ -211,8 +211,6 @@ export default function UserStudyLiPage() {
           showAnswerHighlight={false}
           hideAnimationTransport
           hiddenBlockTypes={HIDDEN_BLOCK_TYPES}
-          trackingEnabled={false}
-          workspaceCloudSyncEnabled={false}
           showDebugSolution={false}
           wideTaskPanel
           onPreviousExercise={

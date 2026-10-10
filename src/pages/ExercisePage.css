@@ -749,7 +749,7 @@
   /* Pinned to the foot and right-aligned. margin-top:auto keeps it in the same
      place whether or not the pass banner is showing -- the banner claims the
      free space first, and this then sits directly under it -- and flex-end
-     keeps it clear of the fixed "tracking off" badge in the bottom-left. */
+     leaves room around the exercise controls. */
   align-self: flex-end;
   margin-top: auto;
   padding: 3px 8px;

@@ -67,12 +67,6 @@ depth cues.
   moving the camera moves the correct answer with it. Their _composition_ does
   not follow automatically -- check that the objects still read well in the
   view after changing it.
-- **Study Phase 1** derives its trial camera from `DEFAULT_CAMERA_VIEW` and
-  `CAMERA_FOV`, at its own distance (`study/phase1/stimulusConfig.js`), so
-  editing the default view moves the trial camera too. Every stimulus is placed
-  and graded against that camera, so the edit also invalidates the fixed
-  stimulus set: bump `STUDY_STIMULUS_SEED` with it. See
-  [study-phase1.md](study-phase1.md).
 - **The overhead light** is placed relative to this view's azimuth, so editing
   the default view keeps it on the viewer's left. It is fixed in world space
   and does not move when the user orbits. See [shadows.md](shadows.md#where-the-overhead-light-sits).

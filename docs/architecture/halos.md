@@ -159,8 +159,8 @@ rebuilt line there was nothing to fill: the shader got a null `haloTex` and a
 1x1 resolution. Under `frameloop="demand"` a static scene renders only that one
 frame, so halos silently never appeared after a rebuild until something (an
 orbit) caused a second frame. A fresh page load hid it by happening to render
-several frames. It showed up as the study's fixed-camera T5 condition being
-pixel-identical to T1 (`study-phase1.md`).
+several frames. It showed up as a fixed-camera scene with halos looking
+identical to the same scene without halos.
 
 Not `userData`: `Material.copy` JSON-clones `userData`, which would try to
 serialise the texture. `haloDiscardShader.test.js` pins the eager, shared

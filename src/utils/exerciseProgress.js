@@ -1,8 +1,6 @@
 // Which exercises the student has completed, kept in localStorage so the
 // browser can show progress across sessions on this device. This is a local
-// convenience only: when the Supabase backend is enabled, exercise_attempts is
-// the authoritative record (see docs/architecture/backend.md). Nothing here
-// talks to the backend.
+// convenience only; no exercise activity is sent to a server.
 
 const STORAGE_KEY = 'geoscratch:solved-exercises'
 

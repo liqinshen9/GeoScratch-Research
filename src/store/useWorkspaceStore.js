@@ -26,8 +26,7 @@ function persistUserBlocks(userBlocks) {
 
 // Per-workspace serialized XML ({ [workspaceId]: xmlText }), persisted so that
 // the sandbox and each exercise keep the blocks you built across reloads and
-// sessions -- not just while the tab stays open. The optional cloud snapshot
-// (workspace_snapshots) still wins on restore when the backend is enabled.
+// sessions -- not just while the tab stays open.
 function loadSavedXml() {
   if (typeof window === 'undefined') return {}
   try {

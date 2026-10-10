@@ -40,9 +40,7 @@ units), and lightness and contrast are depth cues in their own
 right: the brighter, higher-contrast object tends to look nearer (O'Shea,
 Blackburn & Ono 1994; Dosher, Sperling & Wurst 1986). A random one per object
 is noise in any depth judgment, and it competes with shading for the lightness
-channel. The study does not assess it, so `STUDY_PINNED_SETTINGS`
-(`study/phase1/conditions.js`) holds it off in Phase 1 and the holistic tasks
-regardless of the device's settings.
+channel.
 
 Hue is unaffected either way: type identity never depended on it.
 

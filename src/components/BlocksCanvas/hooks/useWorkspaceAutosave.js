@@ -1,12 +1,8 @@
 import { useEffect, useRef } from 'react'
 import * as Blockly from 'blockly/core'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
-import useAuthStore from '@/store/useAuthStore'
 import setupChangeListener from '@/utils/setupChangeListener'
-import { shouldSync, chooseSnapshot, fetchSnapshot, pushSnapshot } from '@/lib/workspaceSync'
 import { applyMyBlockColours } from '@/components/BlocksCanvas/blocks/myBlockAppearance'
-
-const CLOUD_PUSH_DELAY_MS = 3000
 
 /**
  * Restores this workspace's saved XML on first mount, then keeps the store in
@@ -16,21 +12,13 @@ const CLOUD_PUSH_DELAY_MS = 3000
  * each page keeps its own independent workspace. The local copy is persisted to
  * localStorage by useWorkspaceStore, so it survives a reload or a new session.
  *
- * When the backend is configured and the participant is signed in, the same XML
- * is mirrored to `workspace_snapshots`. The cloud copy wins on restore -- study
- * machines may be shared or have their site data cleared. See
- * docs/architecture/backend.md.
- *
  * @param {object|null} workspace  Blockly workspace, once injected.
  * @param {string} id             Storage key for this workspace.
  * @param {(ws: object) => void} syncScene  Re-runs generation after a restore.
- * @param {boolean} [cloudSyncEnabled=true] Whether to read/write cloud snapshots.
  */
-export function useWorkspaceAutosave(workspace, id, syncScene, cloudSyncEnabled = true) {
+export function useWorkspaceAutosave(workspace, id, syncScene) {
   const isFirstLoad = useRef(true)
-  const pushTimer = useRef(null)
   const saveWorkspaceXml = useWorkspaceStore((state) => state.saveWorkspaceXml)
-  const authStatus = useAuthStore((state) => state.status)
 
   useEffect(() => {
     // The workspace must be fully injected before it can be written to;
@@ -38,24 +26,8 @@ export function useWorkspaceAutosave(workspace, id, syncScene, cloudSyncEnabled 
     // rendered block in a headless workspace".
     if (!workspace || !workspace.rendered || !id) return
 
-    // Hold the first-load restore until auth has settled, so a cloud snapshot
-    // (if any) can win. 'offline' / 'error' proceed with local only.
-    const authSettled =
-      !cloudSyncEnabled ||
-      authStatus === 'ready' ||
-      authStatus === 'offline' ||
-      authStatus === 'error'
-
-    let cancelled = false
-
-    const loadInitial = async () => {
-      const localXml = useWorkspaceStore.getState().savedXml[id]
-      let cloud = null
-      if (cloudSyncEnabled && shouldSync(authStatus)) {
-        cloud = await fetchSnapshot(id)
-        if (cancelled) return
-      }
-      const xml = chooseSnapshot({ local: localXml, cloud })
+    const loadInitial = () => {
+      const xml = useWorkspaceStore.getState().savedXml[id]
       if (xml && workspace.rendered) {
         try {
           // Events off while loading, so restoring does not immediately trigger
@@ -74,7 +46,6 @@ export function useWorkspaceAutosave(workspace, id, syncScene, cloudSyncEnabled 
     }
 
     if (isFirstLoad.current) {
-      if (!authSettled) return // effect re-runs when authStatus changes
       isFirstLoad.current = false
       loadInitial()
     }
@@ -89,32 +60,12 @@ export function useWorkspaceAutosave(workspace, id, syncScene, cloudSyncEnabled 
       const dom = Blockly.Xml.workspaceToDom(changedWorkspace)
       const text = Blockly.Xml.domToText(dom)
       saveWorkspaceXml(id, text)
-
-      if (cloudSyncEnabled && shouldSync(useAuthStore.getState().status)) {
-        clearTimeout(pushTimer.current)
-        pushTimer.current = setTimeout(() => {
-          pushSnapshot({
-            profileId: useAuthStore.getState().userId,
-            workspaceId: id,
-            exerciseNumber: parseExerciseNumber(id),
-            xml: text,
-          })
-        }, CLOUD_PUSH_DELAY_MS)
-      }
     })
 
     return () => {
-      cancelled = true
-      clearTimeout(pushTimer.current)
       teardown?.()
     }
-  }, [workspace, id, saveWorkspaceXml, syncScene, authStatus, cloudSyncEnabled])
-}
-
-/** 'exercise-3' -> 3; anything else -> null. */
-function parseExerciseNumber(id) {
-  const match = /^exercise-(\d+)$/.exec(id ?? '')
-  return match ? Number(match[1]) : null
+  }, [workspace, id, saveWorkspaceXml, syncScene])
 }
 
 export default useWorkspaceAutosave

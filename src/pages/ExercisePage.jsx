@@ -18,11 +18,7 @@ import {
 import { getExerciseModule, hasExerciseModule } from '@/exercises'
 import PerceptualQuestion from '@/exercises/shared/PerceptualQuestion'
 import { fillSolution } from '@/exercises/shared/fillSolution'
-import useExerciseTracking from '@/hooks/useExerciseTracking'
 import { markExerciseSolved, unmarkExerciseSolved } from '@/utils/exerciseProgress'
-import { useCurrentStudyTask } from '@/study/session/useStudySession'
-import { configurationSettings, RENDER_MODES } from '@/study/session/holistic'
-import StudyTaskBar from '@/components/StudyTaskBar/StudyTaskBar'
 
 import '@/components/EditorShell/editor-shell.css'
 import './ExercisePage.css'
@@ -91,8 +87,6 @@ export default function ExercisePage({
   showAnswerHighlight = true,
   hideAnimationTransport = false,
   hiddenBlockTypes,
-  trackingEnabled = true,
-  workspaceCloudSyncEnabled = true,
   showDebugSolution = true,
   wideTaskPanel = false,
   onPreviousExercise,
@@ -120,7 +114,9 @@ export default function ExercisePage({
   const routeOnlyExercise = hasExerciseModule(requestedExerciseId)
     ? getExerciseModule(requestedExerciseId)
     : null
-  const baseExerciseConfig = exerciseModule ?? registeredExercise ??
+  const baseExerciseConfig =
+    exerciseModule ??
+    registeredExercise ??
     (routeOnlyExercise
       ? {
           id: routeOnlyExercise.id,
@@ -167,20 +163,6 @@ export default function ExercisePage({
   // Perceptual exercises have no checker pass -- a correct MCQ pick is the pass.
   const isPerceptual = exercise.kind === 'perceptual'
   const passed = result.passed || (isPerceptual && perceptualPicked === exercise.mcq?.correctId)
-
-  // Study mode: this exercise is the session's current holistic task. The
-  // condition's settings win over the exercise's own, navigation is hidden,
-  // and a static condition hides every animation control.
-  // See docs/architecture/study-session.md#holistic-tasks.
-  const currentTask = useCurrentStudyTask()
-  const studyTask =
-    !standalone && currentTask?.exerciseId === activeExercise ? currentTask : null
-  const hideAnimation = Boolean(studyTask) && studyTask.mode !== RENDER_MODES.ANIMATED
-
-  const tracking = useExerciseTracking(activeExercise, exercise.kind, trackingEnabled)
-  useEffect(() => {
-    tracking.reportResult(result)
-  })
 
   // Mirror the solve state into localStorage so the exercise browser shows
   // progress. A pass records it. It comes back off once we've seen this
@@ -233,15 +215,10 @@ export default function ExercisePage({
 
   // An exercise can force certain settings while it is open (its
   // settingsOverrides export); reverted when the student leaves or switches.
-  const studyConfiguration = studyTask?.configuration
-  const studySettings = useMemo(
-    () => (studyConfiguration ? configurationSettings(studyConfiguration) : null),
-    [studyConfiguration],
-  )
   useEffect(() => {
-    setExerciseOverrides({ ...exercise.settingsOverrides, ...settingsOverrides, ...studySettings })
+    setExerciseOverrides({ ...exercise.settingsOverrides, ...settingsOverrides })
     return () => clearExerciseOverrides()
-  }, [exercise, settingsOverrides, studySettings, setExerciseOverrides, clearExerciseOverrides])
+  }, [exercise, settingsOverrides, setExerciseOverrides, clearExerciseOverrides])
 
   const handleObjectsChange = useCallback(
     (objs) => {
@@ -286,7 +263,10 @@ export default function ExercisePage({
             <div className="exercise-column-heading">
               <h2>{exercise.kind === 'tutorial' ? 'Tutorial' : 'Exercise'}</h2>
               {onPreviousExercise || onNextExercise ? (
-                <div className="exercise-column-heading__nav" aria-label="Study exercise navigation">
+                <div
+                  className="exercise-column-heading__nav"
+                  aria-label="Study exercise navigation"
+                >
                   {onPreviousExercise && (
                     <button
                       type="button"
@@ -317,7 +297,7 @@ export default function ExercisePage({
                     </button>
                   )}
                 </div>
-              ) : !studyTask && !standalone ? (
+              ) : !standalone ? (
                 <div className="exercise-column-heading__nav" aria-label="Exercise navigation">
                   <button
                     type="button"
@@ -361,7 +341,7 @@ export default function ExercisePage({
           workspace={workspace}
           workspaceMaximized={workspaceMaximized}
           preserveColumns
-          hideAnimationTransport={hideAnimationTransport || hideAnimation}
+          hideAnimationTransport={hideAnimationTransport}
           onWorkspaceMaximizedChange={handleWorkspaceMaximizedChange}
           onClearWorkspace={() => clearWorkspaceRef.current()}
         />
@@ -372,7 +352,7 @@ export default function ExercisePage({
             aria-hidden={workspaceMaximized}
           >
             <div className="exercise-task-panel__top">
-              {placement && !studyTask && !standalone && (
+              {placement && !standalone && (
                 <p className="exercise-task-panel__crumb">
                   {placement.unit.title} · {placement.section.title}
                 </p>
@@ -384,11 +364,7 @@ export default function ExercisePage({
 
             <Givens />
             {isPerceptual && exercise.mcq && (
-              <PerceptualQuestion
-                mcq={exercise.mcq}
-                onPick={tracking.recordMcqAnswer}
-                onPickedChange={setPerceptualPicked}
-              />
+              <PerceptualQuestion mcq={exercise.mcq} onPickedChange={setPerceptualPicked} />
             )}
             <Steps
               steps={result.steps}
@@ -400,7 +376,7 @@ export default function ExercisePage({
             {!isPerceptual && !exercise.hideAnswerCard && (
               <AnswerCard result={result} className={answerCardClass} />
             )}
-            {exercise.AnimationButton && !hideAnimation ? (
+            {exercise.AnimationButton ? (
               <div className={`exercise-completion-row${passed ? ' is-passed' : ''}`}>
                 {passed && (
                   <div className="exercise-pass-banner" role="status">
@@ -431,7 +407,6 @@ export default function ExercisePage({
                 Fill solution (dev)
               </button>
             )}
-            {studyTask && <StudyTaskBar task={studyTask} passed={passed} />}
           </aside>
 
           <BlocksCanvas
@@ -440,7 +415,6 @@ export default function ExercisePage({
             workspaceMaximized={workspaceMaximized}
             preserveColumns
             hiddenBlockTypes={hiddenBlockTypes}
-            workspaceCloudSyncEnabled={workspaceCloudSyncEnabled}
             reusableBlockTemplate={
               exercise.getReusableBlockTemplate?.({ workspace, result }) ??
               (result.passed ? exercise.reusableBlockTemplate : null)
