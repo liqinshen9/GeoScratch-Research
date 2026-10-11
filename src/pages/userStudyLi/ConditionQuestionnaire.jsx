@@ -14,7 +14,7 @@ const CONDITION_META_FIELDS = [
   {
     id: 'condition',
     label: 'Condition',
-    options: ['GeoScratch Exercise', 'Traditional Exercise'],
+    options: ['GeoScratch Exercise', 'Lecture slides'],
   },
 ]
 const CONDITION_RATING_SECTIONS = [
@@ -161,12 +161,15 @@ function buildConditionResponsePayload(answers, researchId) {
   }
 }
 
-export default function ConditionQuestionnaire({ researchId, onComplete, onSave }) {
+export default function ConditionQuestionnaire({ researchId, condition, conditionOrder, onComplete, onSave }) {
   const [acceptConditionResponses, setAcceptConditionResponses] = useState(
     readAcceptConditionResponsesSetting,
   )
   const [conditionAnswers, setConditionAnswers] = useState(() =>
-    makeInitialConditionAnswers(researchId),
+    ({ ...makeInitialConditionAnswers(researchId),
+      ...(condition ? { condition } : {}),
+      ...(conditionOrder ? { conditionOrder } : {}),
+    }),
   )
   const [conditionSavedMessage, setConditionSavedMessage] = useState('')
 
@@ -244,7 +247,7 @@ export default function ConditionQuestionnaire({ researchId, onComplete, onSave 
                       value={option}
                       checked={conditionAnswers[field.id] === option}
                       onChange={(event) => updateConditionAnswer(field.id, event.target.value)}
-                      disabled={!acceptConditionResponses}
+                      disabled={!acceptConditionResponses || Boolean(field.id === 'condition' ? condition : conditionOrder)}
                     />
                     <span>{option}</span>
                   </label>

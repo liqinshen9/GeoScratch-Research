@@ -21,7 +21,8 @@
 .tutorial-goal table { width: 100%; font-family: inherit; font-size: 11px; border-collapse: collapse; margin: 14px 0; }
 .tutorial-goal th, .tutorial-goal td { text-align: left; padding: 8px 3px; border-bottom: 1px solid #d9e4f6; }
 .tutorial-goal > p { margin: 12px 0; }
-.tutorial-coach { position: fixed; z-index: 110; right: 24px; bottom: 24px; width: min(370px, calc(100vw - 40px)); padding: 22px; border: 1px solid #d5e2f7; border-radius: 14px; color: #172642; background: #fff; box-shadow: 0 10px 45px #15356630; }
+.tutorial-coach { position: absolute; z-index: 110; left: 16px; bottom: 16px; box-sizing: border-box; width: min(370px, calc(100% - 32px)); padding: 22px; border: 1px solid #d5e2f7; border-radius: 14px; color: #172642; background: #fff; box-shadow: 0 10px 45px #15356630; }
+.exercise-page[data-exercise-id='session-sphere-tutorial'] .editor-body-3d { position: relative; }
 .tutorial-coach__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .tutorial-coach h2 { font-size: 21px; font-weight: 700; margin: 12px 0 8px; }
 .tutorial-coach p { font-size: 14px; line-height: 1.6; margin-bottom: 18px; }
@@ -29,9 +30,22 @@
 .tutorial-coach__actions span { color: #637086; font-size: 12px; }
 .tutorial-coach__actions button { color: #1251dc; background: #edf4ff; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
 .tutorial-coach__actions .tutorial-primary { color: white; background: #1251dc; }
+.tutorial-coach__completion-actions { flex-direction: column; gap: 6px; }
+.tutorial-coach__completion-actions .tutorial-primary { width: 100%; padding: 10px 16px; border-radius: 5px; font-size: 13px; line-height: 1.4; background: #002ea6; }
+.tutorial-coach__completion-actions .tutorial-primary:hover { background: #002580; }
+.tutorial-coach__completion-actions .tutorial-coach__watch-again { padding: 5px 10px; background: transparent; color: #637086; font-size: 12px; line-height: 1.4; }
+.tutorial-coach__completion-actions .tutorial-coach__watch-again:hover { color: #002ea6; text-decoration: underline; }
+.tutorial-coach:has(.tutorial-coach__navigation) { padding-bottom: 10px; }
+.tutorial-coach__navigation { margin: 12px 0 0; padding-top: 6px; border-top: 1px solid #e3eaf6; }
+.tutorial-coach__navigation button { background: transparent; border-radius: 2px; padding: 4px 0; font-size: 12px; line-height: 1.4; }
+.tutorial-coach__navigation button:hover:not(:disabled) { text-decoration: underline; }
+.tutorial-coach__actions button:disabled { opacity: .45; cursor: default; }
+.tutorial-coach__actions button:focus-visible { outline: 2px solid #1251dc; outline-offset: 3px; }
 .tutorial-spotlight, .tutorial-demo { position: fixed; z-index: 100; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
 .tutorial-spotlight path { fill: #142440; opacity: .18; }
 .tutorial-spotlight rect { stroke: #3b82f6; stroke-width: 3; fill: none; }
+.tutorial-animation-arrow { position: fixed; z-index: 101; inset: 0; width: 100vw; height: 100dvh; pointer-events: none; }
+.tutorial-animation-arrow path { fill: none; stroke: #2563eb; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .tutorial-block-highlight > .blocklyPath { stroke: #fc3; stroke-width: 3px; }
 .tutorial-table-highlight { background: #fff3bf; outline: 2px solid #fc3; outline-offset: -2px; }
 .exercise-step-check.tutorial-check-highlight, .exercise-step-animation.tutorial-check-highlight { background: #fff3bf; outline: 2px solid #fc3; outline-offset: 1px; }
@@ -46,6 +60,6 @@
   .tutorial-welcome__picture { padding: 20px; border-right: 0; border-bottom: 1px solid var(--geo-border); }
   .tutorial-welcome__picture svg { width: 150px; margin: 0 auto; }
   .tutorial-welcome__message { padding: 20px; }
-  .tutorial-coach { right: 12px; bottom: 12px; }
+  .tutorial-coach { left: 12px; bottom: 12px; width: calc(100% - 24px); }
 }
 @media (prefers-reduced-motion: reduce) { .tutorial-demo { display: none; } }

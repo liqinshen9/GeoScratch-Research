@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import useWorkspaceStore from '@/store/useWorkspaceStore'
 import useThemeSync from '@/hooks/useThemeSync'
 import ExercisePage from '@/pages/ExercisePage'
 import { generateResearchId } from '@/study/session/researchId'
@@ -7,10 +8,13 @@ import ConditionQuestionnaire from './userStudyLi/ConditionQuestionnaire'
 import PostStudyQuestionnaire from './userStudyLi/PostStudyQuestionnaire'
 import TutorialWelcome from './userStudyLi/TutorialWelcome'
 import SessionTutorial from './userStudyLi/SessionTutorial'
+import StudyOrderSelection from './userStudyLi/StudyOrderSelection'
+import LectureSlides from './userStudyLi/LectureSlides'
+import { nextStudyPhase, conditionDetails } from './userStudyLi/studyFlow'
 import './UserStudyLiPage.css'
 
 const STUDY_EXERCISES = [
-  { id: 'create-complex-object' },
+  { id: 'create-complex-object', heading: 'Trial Exercise' },
   { id: 'cube-point-pivot-rotation' },
   { id: 'point-plane-distance', title: 'Calculate the shortest distance from a point to a plane' },
 ]
@@ -106,38 +110,41 @@ function styleStudyPoints(objects) {
 export default function UserStudyLiPage() {
   useThemeSync()
   const [exerciseIndex, setExerciseIndex] = useState(0)
-  const [sessionStarted, setSessionStarted] = useState(false)
-  const [studyStarted, setStudyStarted] = useState(false)
-  const [conditionStarted, setConditionStarted] = useState(false)
-  const [conditionCompleted, setConditionCompleted] = useState(false)
-  const [postCompleted, setPostCompleted] = useState(false)
+  const [phase, setPhase] = useState('new')
+  const [studyOrder, setStudyOrder] = useState(null)
   const [researchId, setResearchId] = useState('')
   const [tutorialPhase, setTutorialPhase] = useState('welcome')
   const exercise = STUDY_EXERCISES[exerciseIndex]
   const exerciseId = exercise.id
 
+  useEffect(() => {
+    useWorkspaceStore.getState().setUserBlockScope(researchId ? `userstudy-Li-${researchId}` : null)
+    return () => useWorkspaceStore.getState().setUserBlockScope(null)
+  }, [researchId])
+
   function startNewSession() {
     const nextResearchId = generateResearchId()
+    useWorkspaceStore.getState().setUserBlockScope(`userstudy-Li-${nextResearchId}`)
     setResearchId(nextResearchId)
     setExerciseIndex(0)
     setTutorialPhase('welcome')
-    setStudyStarted(false)
-    setConditionStarted(false)
-    setConditionCompleted(false)
-    setPostCompleted(false)
-    setSessionStarted(true)
+    setStudyOrder(null)
+    setPhase('demographics')
     window.localStorage.setItem(CURRENT_RESEARCH_ID_KEY, nextResearchId)
   }
 
-  if (!sessionStarted) {
+  function advanceCondition() {
+    setPhase(nextStudyPhase(studyOrder, phase))
+  }
+
+  if (phase === 'new') {
     return (
       <div className="user-study-li-form-page user-study-li-session-page">
         <section className="user-study-li-session-card" aria-labelledby="new-session-title">
-          <p className="user-study-li-kicker">UserStudyLi</p>
           <h1 id="new-session-title">New study session</h1>
           <p>
-            For the researcher. A research ID is generated when the session starts and is used to
-            link the questionnaire, later questionnaires, and study log data.
+            A research ID is generated when the session starts and is used to link the
+            questionnaires and study log data.
           </p>
           <button className="user-study-li-primary-action" type="button" onClick={startNewSession}>
             Start new session
@@ -147,46 +154,72 @@ export default function UserStudyLiPage() {
     )
   }
 
-  if (!studyStarted) {
+  if (phase === 'demographics') {
     return (
       <DemographicsQuestionnaire
         researchId={researchId}
-        onComplete={() => setStudyStarted(true)}
+        onComplete={() => setPhase('order')}
         onSave={saveQuestionnairePayload}
       />
     )
   }
 
-  if (conditionStarted && !conditionCompleted) {
+  if (phase === 'order') {
+    return <StudyOrderSelection onSelect={(order) => {
+      setStudyOrder(order)
+      setPhase(nextStudyPhase(order))
+    }} />
+  }
+
+  if (phase === 'lecture') {
+    return <LectureSlides onComplete={advanceCondition} />
+  }
+
+  if (phase === 'geoscratch-questionnaire' || phase === 'lecture-questionnaire') {
+    const condition = phase === 'geoscratch-questionnaire' ? 'geoscratch' : 'lecture'
+    const details = conditionDetails(studyOrder, condition)
     return (
       <ConditionQuestionnaire
+        key={phase}
         researchId={researchId}
-        onComplete={() => setConditionCompleted(true)}
-        onSave={saveQuestionnairePayload}
+        condition={details.condition}
+        conditionOrder={details.conditionOrder}
+        onComplete={advanceCondition}
+        onSave={(payload, type, backupKey) => saveQuestionnairePayload(
+          { ...payload, studyOrder, conditionId: condition }, type, backupKey,
+        )}
       />
     )
   }
 
-  if (conditionCompleted && !postCompleted) {
+  if (phase === 'post') {
     return (
       <PostStudyQuestionnaire
         researchId={researchId}
-        onComplete={() => setPostCompleted(true)}
-        onSave={saveQuestionnairePayload}
+        conditionOrder={conditionDetails(studyOrder, 'geoscratch').studyOrder}
+        onComplete={advanceCondition}
+        onSave={(payload, type, backupKey) => saveQuestionnairePayload(
+          { ...payload, studyOrder }, type, backupKey,
+        )}
       />
     )
   }
 
-  if (postCompleted) {
+  if (phase === 'complete') {
     return (
       <div className="user-study-li-form-page user-study-li-session-page">
         <section className="user-study-li-session-card" aria-labelledby="session-complete-title">
-          <p className="user-study-li-kicker">UserStudyLi</p>
           <h1 id="session-complete-title">Study session complete</h1>
           <p>Research ID: {researchId}</p>
-          <button className="user-study-li-primary-action" type="button" onClick={startNewSession}>
-            Start new session
-          </button>
+          <footer className="user-study-li-session-footer">
+            <button
+              className="user-study-li-new-session-action"
+              type="button"
+              onClick={() => setPhase('new')}
+            >
+              Start new session
+            </button>
+          </footer>
         </section>
       </div>
     )
@@ -205,6 +238,7 @@ export default function UserStudyLiPage() {
           key={exerciseId}
           exerciseId={exerciseId}
           exerciseTitle={exercise.title}
+          exerciseHeading={exercise.heading}
           standalone
           workspaceId={`userstudy-Li-${researchId || 'no-session'}-${exerciseId}`}
           settingsOverrides={SETTINGS}
@@ -219,7 +253,7 @@ export default function UserStudyLiPage() {
           onNextExercise={
             exerciseIndex < STUDY_EXERCISES.length - 1
               ? () => setExerciseIndex((index) => index + 1)
-              : () => setConditionStarted(true)
+              : advanceCondition
           }
           transformObjects={styleStudyPoints}
           toggleLabelsOnLeftClick

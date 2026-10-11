@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import * as Blockly from 'blockly/core'
 import ExercisePage from '@/pages/ExercisePage'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
 import usePivotPlaybackStore from '@/store/usePivotPlaybackStore'
 import tutorialExercise from './SphereTutorialExercise'
 import { tutorialProgress } from './tutorialProgress'
+import { instructionIndex, TUTORIAL_INSTRUCTIONS } from './tutorialInstructions'
 import './SessionTutorial.css'
 
 const COPY = {
@@ -17,7 +19,7 @@ const COPY = {
   duplicate: ['Duplicate a Sphere', 'Right-click the Sphere block and select Duplicate.'],
   replay: ['Replay the 3D animation', 'Click Show animation on the left to replay the 3D steps. You can rotate the 3D view to find a clear viewing angle.'],
   labels: ['Toggle a sphere’s label', 'Left-click a sphere in the 3D view to show its name. Click it again to hide the label.'],
-  done: ['You made it!', 'You can now drag, connect, and edit blocks.'],
+  done: ['Tutorial complete', 'You’re ready to practise dragging, connecting, and editing blocks in the trial exercise.'],
 }
 
 function pointerSvg() {
@@ -37,6 +39,7 @@ function connectionPosition(workspace, block, input) {
 }
 
 function TutorialGuide({ onDone, labelToggleCount }) {
+  const [coachHost, setCoachHost] = useState(null)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const [revision, setRevision] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
@@ -45,6 +48,7 @@ function TutorialGuide({ onDone, labelToggleCount }) {
   const [layoutRevision, setLayoutRevision] = useState(0)
   const [watchedAnimation, setWatchedAnimation] = useState(false)
   const [triedLabels, setTriedLabels] = useState(false)
+  const [instructionSelection, setInstructionSelection] = useState(null)
   const previousLabelToggleCount = useRef(labelToggleCount)
   const animationPlaying = usePivotPlaybackStore((state) => Boolean(state.target?.userData?.tutorialPreview))
   const demoRef = useRef(null)
@@ -53,9 +57,20 @@ function TutorialGuide({ onDone, labelToggleCount }) {
   const stage = workspaceStage === 'done'
     ? !watchedAnimation ? 'replay' : !triedLabels ? 'labels' : 'done'
     : workspaceStage
+  const automaticIndex = instructionIndex(progress, stage)
+  // Resume automatic guidance whenever the user's workspace advances or changes step.
+  const automaticKey = `${progress.part?.key ?? ''}:${stage}:${fieldName ?? ''}`
+  const selectedIndex = instructionSelection?.automaticKey === automaticKey
+    ? instructionSelection.index : automaticIndex
+  const browsing = selectedIndex !== automaticIndex
+  const instruction = TUTORIAL_INSTRUCTIONS[selectedIndex]
   const numberField = fieldBlock?.getField(fieldName)?.getSvgRoot()
   const coordinateGuide = stage === 'values' && fieldName && fieldName !== 'scalar'
   const inputArrowGuide = stage === 'values' && part?.key === 'head'
+
+  useEffect(() => {
+    setCoachHost(document.querySelector('.exercise-page[data-exercise-id="session-sphere-tutorial"] .editor-body-3d'))
+  }, [])
 
   useEffect(() => usePivotPlaybackStore.subscribe((state, previous) => {
     if (!state.target && state.progress >= 1 && previous.target?.userData?.tutorialPreview) {
@@ -101,6 +116,10 @@ function TutorialGuide({ onDone, labelToggleCount }) {
   }, [workspace])
 
   useEffect(() => {
+    if (browsing) {
+      setFocus(null)
+      return undefined
+    }
     const type = { sphere: 'geo_sphere', scalar: 'scalar', point: 'linalg_point' }[stage]
     const reference = stage === 'values' ? document.querySelector(`[data-tutorial-${coordinateGuide ? 'centre' : 'radius'}="${part.key}"]`) : null
     const target = stage === 'replay' ? (animationPlaying ? null : document.querySelector('[data-tutorial-animation]'))
@@ -130,10 +149,10 @@ function TutorialGuide({ onDone, labelToggleCount }) {
       checkButton?.classList.remove('tutorial-check-highlight')
       if (stage === 'replay') target?.classList.remove('tutorial-check-highlight')
     }
-  }, [stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key, duplicateSource, animationPlaying])
+  }, [browsing, stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key, duplicateSource, animationPlaying])
 
   useEffect(() => {
-    if (stage !== 'replay') return undefined
+    if (browsing || stage !== 'replay') return undefined
     if (animationPlaying) {
       setFocus(null)
       return undefined
@@ -150,20 +169,23 @@ function TutorialGuide({ onDone, labelToggleCount }) {
         // Completion changes the panel layout after the workspace event. Read
         // the live rectangle each frame, including during scrolling/layout shifts.
         const rect = button.getBoundingClientRect()
-        const next = { x: rect.x - 3, y: rect.y - 3, width: rect.width + 6, height: rect.height + 6, outline: false }
+        const next = { x: rect.x - 6, y: rect.y - 6, width: rect.width + 12, height: rect.height + 12, outline: false }
         setFocus((current) => current && current.x === next.x && current.y === next.y
           && current.width === next.width && current.height === next.height ? current : next)
       }
       frame = requestAnimationFrame(followButton)
     }
     frame = requestAnimationFrame(followButton)
-    return () => cancelAnimationFrame(frame)
-  }, [stage, animationPlaying])
+    return () => {
+      cancelAnimationFrame(frame)
+    }
+  }, [browsing, stage, animationPlaying])
 
   useEffect(() => {
     const host = demoRef.current
     host.replaceChildren()
     const animations = []
+    if (browsing) return undefined
     if (stage === 'values' && !inputArrowGuide) return undefined
     const type = { sphere: 'geo_sphere', scalar: 'scalar', point: 'linalg_point' }[stage]
     const preview = type ? document.querySelector(`[data-block-type="${type}"]`) : null
@@ -259,14 +281,20 @@ function TutorialGuide({ onDone, labelToggleCount }) {
       animations.push(cursor.animate(pointerFrames, timing))
     }
     return () => { animations.forEach((animation) => animation.cancel()); host.replaceChildren() }
-  }, [stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision, duplicateSource])
+  }, [browsing, stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision, duplicateSource])
 
   const [title, description] = coordinateGuide
     ? ['Set the centre', 'Enter the centre coordinates in your Point block.']
     : stage === 'values'
     ? ['Set the radius', 'Enter the radius in your Scalar block.']
     : COPY[stage]
+  const [instructionTitle, instructionDescription] = instruction.stage === 'values'
+    ? instruction.fieldName === 'scalar'
+      ? ['Set the radius', `Set the ${instruction.part.name.toLowerCase()} radius to ${instruction.part.radius} in your Scalar block.`]
+      : ['Set the centre', `Set ${instruction.fieldName} to ${instruction.part.centre[['X', 'Y', 'Z'].indexOf(instruction.fieldName)]} in the Point block for the ${instruction.part.name.toLowerCase()}.`]
+    : COPY[instruction.stage]
   const restartTutorial = () => {
+    setInstructionSelection(null)
     setWatchedAnimation(false)
     setTriedLabels(false)
     workspace?.clear()
@@ -279,15 +307,29 @@ function TutorialGuide({ onDone, labelToggleCount }) {
   return <>
     {focus && <svg className="tutorial-spotlight" aria-hidden="true"><path fillRule="evenodd" d={`M0 0H${window.innerWidth}V${window.innerHeight}H0Z M${focus.x} ${focus.y}v${focus.height}h${focus.width}v-${focus.height}Z${inputArrowGuide && focus.reference ? ` M${focus.reference.x} ${focus.reference.y}v${focus.reference.height}h${focus.reference.width}v-${focus.reference.height}Z` : ''}${focus.check ? ` M${focus.check.x - 3} ${focus.check.y - 3}v${focus.check.height + 6}h${focus.check.width + 6}v-${focus.check.height + 6}Z` : ''}`} />{focus.outline && <rect x={focus.x} y={focus.y} width={focus.width} height={focus.height} rx="8" />}</svg>}
     <div className="tutorial-demo" ref={demoRef} aria-hidden="true" />
-    <section className="tutorial-coach" aria-label="Tutorial guide">
+    {focus && stage === 'replay' && !browsing && !animationPlaying && (
+      <svg className="tutorial-animation-arrow" aria-hidden="true">
+        <path d={`M${focus.x + focus.width / 2} ${focus.y - 38} L${focus.x + focus.width / 2} ${focus.y - 6} M${focus.x + focus.width / 2 - 5} ${focus.y - 13} L${focus.x + focus.width / 2} ${focus.y - 6} L${focus.x + focus.width / 2 + 5} ${focus.y - 13}`} />
+      </svg>
+    )}
+    {coachHost && createPortal(<section className="tutorial-coach" aria-label="Tutorial guide">
       <div className="tutorial-coach__top"><span className="tutorial-eyebrow">{completed.length}/3</span>{workspaceStage !== 'done' && <button type="button" className="tutorial-skip" onClick={onDone}>Skip tutorial</button>}</div>
-      <h2>{title}</h2>{description && <p aria-live="polite">{description}</p>}
-      {stage === 'values' && <p>Click Check for this step if you need a hint.</p>}
-      {stage === 'done' && <div className="tutorial-coach__actions">
-        <button type="button" onClick={restartTutorial}>Watch again</button>
-        <button type="button" className="tutorial-primary" onClick={onDone}>Start the first exercise →</button>
+      <div aria-live="polite">
+        <h2>{browsing ? instructionTitle : title}</h2>
+        {(browsing ? instructionDescription : description) && <p>{browsing ? instructionDescription : description}</p>}
+      </div>
+      {instruction.stage === 'values' && <p>Click Check for this step if you need a hint.</p>}
+      {stage === 'done' && !browsing && <div className="tutorial-coach__actions tutorial-coach__completion-actions">
+        <button type="button" className="tutorial-primary" onClick={onDone}>Start trial exercise</button>
+        <button type="button" className="tutorial-coach__watch-again" onClick={restartTutorial}>Watch again</button>
       </div>}
-    </section>
+      <nav className="tutorial-coach__navigation tutorial-coach__actions" aria-label="Tutorial instructions">
+        <button type="button" disabled={selectedIndex === 0}
+          onClick={() => setInstructionSelection({ automaticKey, index: selectedIndex - 1 })}>Previous</button>
+        <button type="button" disabled={selectedIndex >= automaticIndex}
+          onClick={() => setInstructionSelection({ automaticKey, index: Math.min(selectedIndex + 1, automaticIndex) })}>Next</button>
+      </nav>
+    </section>, coachHost)}
   </>
 }
 

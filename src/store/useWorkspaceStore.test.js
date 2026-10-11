@@ -72,6 +72,36 @@ describe('useWorkspaceStore', () => {
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull()
   })
 
+  it('isolates study sessions while preserving ordinary and previous session blocks', async () => {
+    const store = await freshStore()
+    const ordinary = store.getState().addUserBlock({ name: 'Ordinary block', xmlText: '<xml/>' })
+    store.getState().setUserBlockScope('userstudy-Li-FIRST')
+    expect(store.getState().userBlocks).toEqual([])
+    const trial = store.getState().addUserBlock({ name: 'Trial block', xmlText: '<xml/>' })
+    store.getState().setUserBlockScope('userstudy-Li-FIRST')
+    expect(store.getState().userBlocks).toEqual([trial])
+    store.getState().setUserBlockScope('userstudy-Li-SECOND')
+    expect(store.getState().userBlocks).toEqual([])
+    expect(store.getState().recentDeletedUserBlocks).toEqual([])
+    store.getState().setUserBlockScope('userstudy-Li-FIRST')
+    expect(store.getState().userBlocks).toEqual([trial])
+    store.getState().setUserBlockScope(null)
+    expect(store.getState().userBlocks).toEqual([ordinary])
+  })
+
+  it('persists deletions and restores only in the selected session', async () => {
+    const store = await freshStore()
+    store.getState().setUserBlockScope('userstudy-Li-FIRST')
+    const trial = store.getState().addUserBlock({ name: 'Trial block', xmlText: '<xml/>' })
+    store.getState().deleteUserBlock(trial.id)
+    expect(store.getState().userBlocks).toEqual([])
+    store.getState().restoreUserBlock(trial)
+    const reloaded = await freshStore()
+    expect(reloaded.getState().userBlocks).toEqual([])
+    reloaded.getState().setUserBlockScope('userstudy-Li-FIRST')
+    expect(reloaded.getState().userBlocks).toEqual([trial])
+  })
+
   it('persists saved workspace XML and reloads it on creation', async () => {
     const store = await freshStore()
     store.getState().saveWorkspaceXml('exercise-scale-object', '<xml>solution</xml>')

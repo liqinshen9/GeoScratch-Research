@@ -4,10 +4,14 @@ const USER_BLOCKS_STORAGE_KEY = 'geoscratch:userBlocks'
 const MAX_RECENT_DELETED_USER_BLOCKS = 8
 const SAVED_XML_STORAGE_KEY = 'geoscratch:workspace-xml'
 
-function loadUserBlocks() {
+function userBlocksStorageKey(scope) {
+  return scope ? `${USER_BLOCKS_STORAGE_KEY}:${scope}` : USER_BLOCKS_STORAGE_KEY
+}
+
+function loadUserBlocks(scope = null) {
   if (typeof window === 'undefined') return []
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(USER_BLOCKS_STORAGE_KEY) || '[]')
+    const parsed = JSON.parse(window.localStorage.getItem(userBlocksStorageKey(scope)) || '[]')
     return Array.isArray(parsed) ? parsed : []
   } catch (err) {
     console.error('[GeoScratch] Failed to load user blocks:', err)
@@ -15,10 +19,10 @@ function loadUserBlocks() {
   }
 }
 
-function persistUserBlocks(userBlocks) {
+function persistUserBlocks(userBlocks, scope = null) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(USER_BLOCKS_STORAGE_KEY, JSON.stringify(userBlocks))
+    window.localStorage.setItem(userBlocksStorageKey(scope), JSON.stringify(userBlocks))
   } catch (err) {
     console.error('[GeoScratch] Failed to save user blocks:', err)
   }
@@ -61,6 +65,14 @@ const useWorkspaceStore = create((set) => ({
   // persisted to localStorage (see loadSavedXml).
   savedXml: loadSavedXml(),
   userBlocks: loadUserBlocks(),
+  userBlockScope: null,
+  setUserBlockScope: (scope = null) => set((state) =>
+    state.userBlockScope === scope ? state : {
+      userBlockScope: scope,
+      userBlocks: loadUserBlocks(scope),
+      recentDeletedUserBlocks: [],
+    },
+  ),
   recentDeletedUserBlocks: [],
 
   // Block id shared between the Blockly workspace and the 3D scene: selecting
@@ -105,7 +117,7 @@ const useWorkspaceStore = create((set) => ({
 
     set((state) => {
       const userBlocks = [block, ...state.userBlocks]
-      persistUserBlocks(userBlocks)
+      persistUserBlocks(userBlocks, state.userBlockScope)
       return { userBlocks }
     })
 
@@ -120,7 +132,7 @@ const useWorkspaceStore = create((set) => ({
         deletedBlock,
         ...state.recentDeletedUserBlocks.filter((block) => block.id !== blockId),
       ].slice(0, MAX_RECENT_DELETED_USER_BLOCKS)
-      persistUserBlocks(userBlocks)
+      persistUserBlocks(userBlocks, state.userBlockScope)
       return { userBlocks, recentDeletedUserBlocks }
     }),
   restoreUserBlock: (block) =>
@@ -130,7 +142,7 @@ const useWorkspaceStore = create((set) => ({
       const recentDeletedUserBlocks = state.recentDeletedUserBlocks.filter(
         (item) => item.id !== block.id,
       )
-      persistUserBlocks(userBlocks)
+      persistUserBlocks(userBlocks, state.userBlockScope)
       return { userBlocks, recentDeletedUserBlocks }
     }),
 }))

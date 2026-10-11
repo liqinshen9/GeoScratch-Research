@@ -9,7 +9,7 @@ const POST_META_FIELDS = [
   {
     id: 'conditionOrder',
     label: 'Condition order',
-    options: ['GeoScratch Exercise first', 'Traditional Exercise first'],
+    options: ['GeoScratch Exercise first', 'Lecture slides first'],
   },
 ]
 const POST_STUDY_SECTIONS = [
@@ -279,9 +279,12 @@ function buildPostResponsePayload(answers, researchId) {
   }
 }
 
-export default function PostStudyQuestionnaire({ researchId, onComplete, onSave }) {
+export default function PostStudyQuestionnaire({ researchId, conditionOrder, onComplete, onSave }) {
   const [acceptPostResponses, setAcceptPostResponses] = useState(readAcceptPostResponsesSetting)
-  const [postAnswers, setPostAnswers] = useState(() => makeInitialPostAnswers(researchId))
+  const [postAnswers, setPostAnswers] = useState(() => ({
+    ...makeInitialPostAnswers(researchId),
+    ...(conditionOrder ? { conditionOrder } : {}),
+  }))
   const [postSavedMessage, setPostSavedMessage] = useState('')
 
   function updateAcceptPostResponses(checked) {
@@ -354,7 +357,7 @@ export default function PostStudyQuestionnaire({ researchId, onComplete, onSave 
                       value={option}
                       checked={postAnswers[field.id] === option}
                       onChange={(event) => updatePostAnswer(field.id, event.target.value)}
-                      disabled={!acceptPostResponses}
+                      disabled={!acceptPostResponses || Boolean(conditionOrder)}
                     />
                     <span>{option}</span>
                   </label>

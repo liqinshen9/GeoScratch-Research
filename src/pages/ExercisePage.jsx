@@ -81,6 +81,7 @@ export default function ExercisePage({
   exerciseModule,
   exerciseId: fixedExerciseId,
   exerciseTitle,
+  exerciseHeading,
   standalone = false,
   workspaceId,
   settingsOverrides,
@@ -261,7 +262,7 @@ export default function ExercisePage({
         <EditorColumnHeaders
           leadingHeader={
             <div className="exercise-column-heading">
-              <h2>{exercise.kind === 'tutorial' ? 'Tutorial' : 'Exercise'}</h2>
+              <h2>{exerciseHeading ?? (exercise.kind === 'tutorial' ? 'Tutorial' : 'Exercise')}</h2>
               {onPreviousExercise || onNextExercise ? (
                 <div
                   className="exercise-column-heading__nav"
