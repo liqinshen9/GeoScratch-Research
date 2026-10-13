@@ -46,6 +46,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
   const [focus, setFocus] = useState(null)
   const [replay, setReplay] = useState(0)
   const [layoutRevision, setLayoutRevision] = useState(0)
+  const [dragging, setDragging] = useState(false)
   const [watchedAnimation, setWatchedAnimation] = useState(false)
   const [triedLabels, setTriedLabels] = useState(false)
   const [instructionSelection, setInstructionSelection] = useState(null)
@@ -92,6 +93,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
 
   useEffect(() => {
     const refresh = (event) => {
+      if (event?.type === Blockly.Events.BLOCK_DRAG) setDragging(Boolean(event.isStart))
       setCreateOpen(Boolean(document.querySelector('[data-category-id="create"].is-active')))
       setRevision((value) => value + 1)
       if (event?.type === Blockly.Events.BLOCK_MOVE || event?.type === 'resize' || event?.type === 'scroll') {
@@ -116,7 +118,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
   }, [workspace])
 
   useEffect(() => {
-    if (browsing) {
+    if (browsing || dragging) {
       setFocus(null)
       return undefined
     }
@@ -149,7 +151,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
       checkButton?.classList.remove('tutorial-check-highlight')
       if (stage === 'replay') target?.classList.remove('tutorial-check-highlight')
     }
-  }, [browsing, stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key, duplicateSource, animationPlaying])
+  }, [browsing, dragging, stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key, duplicateSource, animationPlaying])
 
   useEffect(() => {
     if (browsing || stage !== 'replay') return undefined
@@ -185,7 +187,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     const host = demoRef.current
     host.replaceChildren()
     const animations = []
-    if (browsing) return undefined
+    if (browsing || dragging) return undefined
     if (stage === 'values' && !inputArrowGuide) return undefined
     const type = { sphere: 'geo_sphere', scalar: 'scalar', point: 'linalg_point' }[stage]
     const preview = type ? document.querySelector(`[data-block-type="${type}"]`) : null
@@ -281,7 +283,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
       animations.push(cursor.animate(pointerFrames, timing))
     }
     return () => { animations.forEach((animation) => animation.cancel()); host.replaceChildren() }
-  }, [browsing, stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision, duplicateSource])
+  }, [browsing, dragging, stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision, duplicateSource])
 
   const [title, description] = coordinateGuide
     ? ['Set the centre', 'Enter the centre coordinates in your Point block.']

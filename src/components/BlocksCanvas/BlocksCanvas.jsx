@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Blockly from 'blockly/core'
 import addBlockToWorkspace from '@/utils/addBlockToWorkspace'
 import addCompositeBlockToWorkspace from '@/utils/addCompositeBlockToWorkspace'
+import startPaletteBlockDrag from '@/utils/startPaletteBlockDrag'
 import CategoryToolbox from '@/components/BlocksCanvas/toolbox/CategoryToolbox'
 import BlockPalette from '@/components/BlocksCanvas/palette/BlockPalette'
 import MyBlockDialog from '@/components/BlocksCanvas/MyBlockDialog'
@@ -111,9 +112,9 @@ export default function BlocksCanvas({
   }, [onRegisterClear, handleClearWorkspace])
 
   const handleBlockSelect = useCallback(
-    (type) => {
+    (type, options = {}) => {
       if (!workspace) return
-      addBlockToWorkspace(workspace, type)
+      addBlockToWorkspace(workspace, type, options)
     },
     [workspace],
   )
@@ -198,13 +199,37 @@ export default function BlocksCanvas({
     [workspace, syncScene],
   )
 
+  const isWorkspacePosition = useCallback((position, target) => {
+    // The flyout overlays part of the workspace, so target ancestry alone
+    // cannot determine whether a native drag is over the workspace.
+    if (target?.closest?.('.my-block-trash')) return false
+    const bounds = workspaceHostRef.current?.getBoundingClientRect()
+    return bounds && position.clientX >= bounds.left && position.clientX < bounds.right
+      && position.clientY >= bounds.top && position.clientY < bounds.bottom
+  }, [])
+
+  const isWorkspaceDrop = useCallback((event) => {
+    const supportedTypes = [
+      'application/x-geoscratch-block-type',
+      'application/x-geoscratch-my-block-id',
+      TRASH_BLOCK_XML_TRANSFER_TYPE,
+    ]
+    const transferTypes = Array.from(event.dataTransfer?.types ?? [])
+    return (
+      isWorkspacePosition(event, event.target) &&
+      supportedTypes.some((type) => transferTypes.includes(type))
+    )
+  }, [isWorkspacePosition])
+
   const handleWorkspaceDragOver = useCallback((event) => {
+    if (!isWorkspaceDrop(event)) return
     event.preventDefault()
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
-  }, [])
+  }, [isWorkspaceDrop])
 
   const handleWorkspaceDrop = useCallback(
     (event) => {
+      if (!isWorkspaceDrop(event)) return
       event.preventDefault()
       if (!workspace) return
       const type = event.dataTransfer?.getData('application/x-geoscratch-block-type')
@@ -235,7 +260,7 @@ export default function BlocksCanvas({
         })
       }
     },
-    [restoreDroppedBlock, workspace, handleUserBlockSelect],
+    [restoreDroppedBlock, workspace, handleUserBlockSelect, isWorkspaceDrop],
   )
 
   const handleCategorySelect = (nextCategoryId) => {
@@ -251,7 +276,13 @@ export default function BlocksCanvas({
   }, [workspaceMaximized])
 
   return (
-    <div id="blocks-canvas" className="blocks-shell">
+    <div
+      id="blocks-canvas"
+      className="blocks-shell"
+      onDragEnterCapture={handleWorkspaceDragOver}
+      onDragOverCapture={handleWorkspaceDragOver}
+      onDropCapture={handleWorkspaceDrop}
+    >
       <MyBlockDialog
         open={myBlockDialog?.type === 'empty'}
         title="Make a Block"
@@ -303,10 +334,20 @@ export default function BlocksCanvas({
                 hiddenBlockTypes={hiddenBlockTypes}
                 onBlockSelect={handleBlockSelect}
                 onBlockDragStart={() => setPaletteOpen(true)}
+                onBlockBeginDrag={(type, event, source) => startPaletteBlockDrag(workspace,
+                  (options) => handleBlockSelect(type, options), event, source, isWorkspacePosition)}
+                onBlockDrop={(type, position, target) => {
+                  if (isWorkspacePosition(position, target)) handleBlockSelect(type, position)
+                }}
                 onMakeBlock={handleMakeBlock}
                 onUserBlockSelect={handleUserBlockSelect}
                 onUserBlockDelete={deleteUserBlock}
                 onUserBlockDragStart={() => setPaletteOpen(true)}
+                onUserBlockBeginDrag={(blockId, event, source) => startPaletteBlockDrag(workspace,
+                  (options) => handleUserBlockSelect(blockId, options), event, source, isWorkspacePosition)}
+                onUserBlockDrop={(blockId, position, target) => {
+                  if (isWorkspacePosition(position, target)) handleUserBlockSelect(blockId, position)
+                }}
               />
             </aside>
           )}
@@ -317,8 +358,6 @@ export default function BlocksCanvas({
         <div
           className="workspace-host"
           ref={workspaceHostRef}
-          onDragOver={handleWorkspaceDragOver}
-          onDrop={handleWorkspaceDrop}
         />
         {connectionFeedback && (
           <div className="connection-type-feedback" role="status" aria-live="polite">

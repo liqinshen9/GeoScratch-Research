@@ -8,6 +8,7 @@ import { MY_BLOCK_COLOUR } from '@/components/BlocksCanvas/blocks/myBlockAppeara
 import useWorkspaceStore from '@/store/useWorkspaceStore'
 import useSettingsStore from '@/store/useSettingsStore'
 import { registerGeoScratchRenderer } from '@/components/BlocksCanvas/renderers/geoScratchRenderer'
+import usePalettePointerDrag from './usePalettePointerDrag'
 
 const PALETTE_WS_OPTIONS = {
   readOnly: true,
@@ -60,11 +61,15 @@ function useSelectionFeedback() {
   return { itemRef, flashSelection, handlePointerEnter, handlePointerLeave }
 }
 
-function BlockPreview({ type, onSelect, onDragStartBlock }) {
+function BlockPreview({ type, onSelect, onDragStartBlock, onDropBlock, onBeginDrag }) {
   const hostRef = useRef(null)
   const resolvedTheme = useSettingsStore((s) => s.resolvedTheme)
   const { itemRef, flashSelection, handlePointerEnter, handlePointerLeave } =
     useSelectionFeedback()
+  const pointerDrag = usePalettePointerDrag({
+    onStart: (event, source) => { flashSelection(); onDragStartBlock?.(type); return onBeginDrag?.(type, event, source) },
+    onDrop: (position, target) => onDropBlock?.(type, position, target),
+  })
 
   useLayoutEffect(() => {
     const host = hostRef.current
@@ -91,14 +96,6 @@ function BlockPreview({ type, onSelect, onDragStartBlock }) {
     }
   }, [type, resolvedTheme])
 
-  const handleDragStart = (event) => {
-    if (!event.dataTransfer) return
-    flashSelection()
-    event.dataTransfer.effectAllowed = 'copy'
-    event.dataTransfer.setData('application/x-geoscratch-block-type', type)
-    onDragStartBlock?.(type)
-  }
-
   const handleSelect = () => {
     flashSelection()
     onSelect(type)
@@ -110,6 +107,7 @@ function BlockPreview({ type, onSelect, onDragStartBlock }) {
       className="palette-block-preview"
       data-block-type={type}
       title="Click to add or drag into workspace"
+      {...pointerDrag}
     >
       <div className="palette-block-preview__blockly-host" ref={hostRef} />
       <div
@@ -117,10 +115,8 @@ function BlockPreview({ type, onSelect, onDragStartBlock }) {
         role="button"
         aria-label={`Add ${type.replace(/^geo_|^linalg_/, '').replaceAll('_', ' ')}`}
         tabIndex={0}
-        draggable
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
-        onDragStart={handleDragStart}
         onClick={handleSelect}
       />
     </div>
@@ -173,19 +169,14 @@ function MyBlockPreview({ xmlText, name }) {
   return <span className="my-block-card__preview" ref={hostRef} />
 }
 
-function MyBlockCard({ block, onSelect, onDragStartBlock, onDragEndBlock }) {
+function MyBlockCard({ block, onSelect, onDragStartBlock, onDropBlock, onBeginDrag }) {
   const { itemRef, flashSelection, handlePointerEnter, handlePointerLeave } =
     useSelectionFeedback()
 
-  const handleDragStart = (event) => {
-    if (!event.dataTransfer) return
-    flashSelection()
-    event.dataTransfer.effectAllowed = 'copyMove'
-    event.dataTransfer.setData(MY_BLOCK_TRANSFER_TYPE, block.id)
-    const blockPreview = itemRef.current?.querySelector('.my-block-card__preview')
-    if (blockPreview) event.dataTransfer.setDragImage(blockPreview, 12, 12)
-    onDragStartBlock?.(block.id)
-  }
+  const pointerDrag = usePalettePointerDrag({
+    onStart: (event, source) => { flashSelection(); onDragStartBlock?.(block.id); return onBeginDrag?.(block.id, event, source) },
+    onDrop: (position, target) => onDropBlock?.(block.id, position, target),
+  })
 
   const handleSelect = () => {
     flashSelection()
@@ -196,9 +187,7 @@ function MyBlockCard({ block, onSelect, onDragStartBlock, onDragEndBlock }) {
     <div
       ref={itemRef}
       className="my-block-card"
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={onDragEndBlock}
+      {...pointerDrag}
     >
       <button
         type="button"
@@ -215,7 +204,7 @@ function MyBlockCard({ block, onSelect, onDragStartBlock, onDragEndBlock }) {
   )
 }
 
-function MyBoxPalette({ onMakeBlock, onUserBlockSelect, onUserBlockDelete, onUserBlockDragStart }) {
+function MyBoxPalette({ onMakeBlock, onUserBlockSelect, onUserBlockDelete, onUserBlockDragStart, onUserBlockDrop, onUserBlockBeginDrag }) {
   const userBlocks = useWorkspaceStore((state) => state.userBlocks)
   const recentDeletedBlocks = useWorkspaceStore((state) => state.recentDeletedUserBlocks)
   const restoreUserBlock = useWorkspaceStore((state) => state.restoreUserBlock)
@@ -268,7 +257,12 @@ function MyBoxPalette({ onMakeBlock, onUserBlockSelect, onUserBlockDelete, onUse
                 block={block}
                 onSelect={onUserBlockSelect}
                 onDragStartBlock={onUserBlockDragStart}
-                onDragEndBlock={() => setTrashActive(false)}
+                onBeginDrag={onUserBlockBeginDrag}
+                onDropBlock={(blockId, position, target) => {
+                  if (target?.closest('.my-block-trash')) onUserBlockDelete(blockId)
+                  else onUserBlockDrop?.(blockId, position, target)
+                  setTrashActive(false)
+                }}
               />
             ))
           ) : (
@@ -323,10 +317,14 @@ export default function BlockPalette({
   hiddenBlockTypes = [],
   onBlockSelect,
   onBlockDragStart,
+  onBlockDrop,
+  onBlockBeginDrag,
   onMakeBlock,
   onUserBlockSelect,
   onUserBlockDelete,
   onUserBlockDragStart,
+  onUserBlockDrop,
+  onUserBlockBeginDrag,
 }) {
   const category = getCategory(categoryId)
   if (!category) return null
@@ -339,6 +337,8 @@ export default function BlockPalette({
         onUserBlockSelect={onUserBlockSelect}
         onUserBlockDelete={onUserBlockDelete}
         onUserBlockDragStart={onUserBlockDragStart}
+        onUserBlockDrop={onUserBlockDrop}
+        onUserBlockBeginDrag={onUserBlockBeginDrag}
       />
     )
   }
@@ -359,6 +359,8 @@ export default function BlockPalette({
                   type={type}
                   onSelect={onBlockSelect}
                   onDragStartBlock={onBlockDragStart}
+                  onDropBlock={onBlockDrop}
+                  onBeginDrag={onBlockBeginDrag}
                 />
               ))}
             </section>

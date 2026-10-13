@@ -174,6 +174,26 @@ programmatic end) would otherwise miss.
 `handleDeletedBlockDragStart` sets `effectAllowed = 'copy'`, which must match the
 `'copy'` `dropEffect` set in `handleWorkspaceDragOver`, or the drop is rejected.
 
+### palette-overlaps-workspace
+
+The toolbox flyout covers part of the workspace. Regular and saved palette blocks
+use `usePalettePointerDrag`, handling primary mouse gestures before the preview
+SVG can take over. At five pixels of movement a noninteractive preview follows
+the cursor. In the app, pickup creates real workspace blocks and hands movement
+to Blockly's registered block dragger via `startPaletteBlockDrag`. Its native
+connection previewer handles plug proximity, highlights and snapping throughout
+the drag, using the original grab offset. The palette stays open and visible,
+letting pointer events through during the drag, and tutorial demonstration copies pause while a block is
+being dragged. Release completes the native connection; it does not insert a
+second block. This does not depend on HTML drag negotiation or tutorial stage.
+The trailing click is suppressed to prevent duplicate insertion. Pointer cancel,
+Escape, window blur, a new gesture, and unmount clean up the preview and listeners.
+Saved-block trash is resolved from the element beneath the release point.
+
+Native drag entry/over/drop capture on the shared shell remains for restoring
+deleted workspace blocks. It checks GeoScratch transfer types and workspace
+bounds, excluding the saved-block trash and drops outside the workspace.
+
 ## Marking the answer
 
 An exercise's answer is recoloured green when its value is right and red when it

@@ -10,7 +10,7 @@ import rotationExercise, {
 const TASKS = [
   ['cube', 'Create: a Cube with Scalar 2 for side length and Vector (1, 1, 1) for its centre.'],
   ['point', 'Create: a Point at the input corner P1 = (0, 2, 2).'],
-  ['pair', 'My Blocks: save the cube and point as a composite block. Enter a name of your choice. You will use this saved block in the next exercise.'],
+  ['pair', 'Click My Blocks in the toolbox, then click Make a Block. Enter a name however you like and click Save to save the cube and point together. You will use this new block in the next exercise.'],
 ]
 
 function Givens() {

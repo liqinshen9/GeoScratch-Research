@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clear saved study data</title>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; color: #111827; background: #f8fafc; max-width: 760px; margin: 56px auto; padding: 0 24px; }
+    h1 { font-size: 28px; } button { font: inherit; padding: 12px 18px; cursor: pointer; border: 0; border-radius: 6px; background: #b91c1c; color: white; }
+    button:disabled { opacity: .5; cursor: default; } #error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Clear saved study data</h1>
+  <p>Use the original study browser profile. Close any active study sessions before deleting.</p>
+  <p>This deletes saved study questionnaires, lecture answers, interaction logs, session backups, and study blocks/workspaces from this browser. Your downloaded files, app settings, and other workspaces are kept.</p>
+  <p id="summary"></p>
+  <button id="clear" disabled type="button">Delete previous saved study data</button>
+  <p id="result" role="status"></p>
+  <p id="error" role="alert"></p>
+  <p><a href="./userstudy-Li">Return to the study</a></p>
+  <script type="module">
+    import { inspectStudyStorage, clearSavedStudyStorage } from './study-storage.js'
+    const button = document.querySelector('#clear')
+    function update() {
+      const data = inspectStudyStorage(localStorage)
+      document.querySelector('#summary').textContent = `${location.origin}: ${data.keys.length} saved study storage entries and ${data.workspaceIds.length} study workspaces found.`
+      button.disabled = !data.keys.length && !data.workspaceIds.length
+    }
+    try { update() } catch (error) { document.querySelector('#error').textContent = error.message }
+    button.onclick = () => {
+      button.disabled = true
+      try {
+        const cleared = clearSavedStudyStorage(localStorage)
+        update()
+        document.querySelector('#result').textContent = `Deleted ${cleared.deletedKeys.length} study storage entries and ${cleared.deletedWorkspaceIds.length} study workspaces. Previous study data is cleared. Return to the study to start a new session.`
+        document.querySelector('#error').textContent = ''
+      } catch (error) {
+        document.querySelector('#error').textContent = `Could not finish deleting saved study data: ${error.message}`
+        button.disabled = false
+      }
+    }
+  </script>
+</body>
+</html>

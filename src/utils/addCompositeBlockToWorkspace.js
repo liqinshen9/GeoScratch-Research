@@ -1,4 +1,5 @@
 import * as Blockly from 'blockly/core'
+import connectDroppedBlock from './connectDroppedBlock'
 import { markMyBlockInstance } from '@/components/BlocksCanvas/blocks/myBlockAppearance'
 
 const FALLBACK_OFFSET = 28
@@ -54,7 +55,8 @@ function prepareCompositeDom(dom, workspace, options) {
 export default function addCompositeBlockToWorkspace(workspace, xmlText, options = {}) {
   if (!workspace || workspace.isFlyout || !xmlText) return false
 
-  const group = Blockly.utils.idGenerator.genUid()
+  const previousGroup = Blockly.Events.getGroup()
+  const group = previousGroup || Blockly.utils.idGenerator.genUid()
   Blockly.Events.setGroup(group)
   try {
     const existingBlockIds = new Set(workspace.getAllBlocks(false).map((block) => block.id))
@@ -66,12 +68,14 @@ export default function addCompositeBlockToWorkspace(workspace, xmlText, options
         .filter((block) => !existingBlockIds.has(block.id))
         .forEach((block) => markMyBlockInstance(block, options.myBlockId))
     }
+    const addedRoots = workspace.getTopBlocks(false).filter((block) => !existingBlockIds.has(block.id))
+    if (addedRoots.length === 1 && options.snapOnDrop !== false) connectDroppedBlock(workspace, addedRoots[0], options)
     Blockly.svgResize(workspace)
     return true
   } catch (err) {
     console.error('[GeoScratch] addCompositeBlockToWorkspace error:', err)
     return false
   } finally {
-    Blockly.Events.setGroup(false)
+    Blockly.Events.setGroup(previousGroup)
   }
 }

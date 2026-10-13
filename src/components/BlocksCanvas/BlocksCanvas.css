@@ -75,6 +75,14 @@
   height: 100%;
 }
 
+.blocks-col--palette-flyout.is-blockly-dragging {
+  pointer-events: none;
+}
+
+.blocks-col--palette-flyout.is-blockly-dragging .my-block-trash {
+  pointer-events: auto;
+}
+
 .blocks-col--palette-flyout .block-palette-scroll {
   overflow-y: auto;
 }
@@ -227,9 +235,9 @@
   display: none !important;
 }
 
-/* Sits in front of the Blockly-injected SVG so the browser's native drag
-   gesture starts on this element instead -- Blockly's own gesture handling
-   on the injected SVG swallows mousedown before native dragstart can fire. */
+/* Keeps the Blockly preview SVG from taking over palette pointer gestures.
+   Palette dragging is handled explicitly, separate from Blockly's workspace
+   block gestures. */
 .palette-block-preview__drag-surface {
   position: absolute;
   inset: 0;

@@ -227,7 +227,6 @@ export default function UserStudyLiPage() {
           <button className="user-study-li-primary-action" type="button" onClick={startNewSession}>
             Start new session
           </button>
-          <p><a href={`${import.meta.env.BASE_URL}study-recovery.html`} target="_blank" rel="noopener noreferrer">Recover saved study data</a></p>
         </section>
       </div>
     )
