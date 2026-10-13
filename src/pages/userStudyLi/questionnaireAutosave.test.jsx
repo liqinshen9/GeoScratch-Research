@@ -77,4 +77,15 @@ describe('questionnaire autosaving', () => {
     expect(saved.submittedAt).toBeTruthy()
     expect(readSessionQuestionnaires('other-session')).toEqual([])
   })
+
+  it('places tutorial effectiveness in usability Section A with a Not applicable response', () => {
+    const onSave = vi.fn()
+    act(() => root.render(<PostStudyQuestionnaire researchId="session-1" onComplete={() => {}} onSave={onSave} />))
+    const options = [...host.querySelectorAll('input[name="tutorialEffectiveness"]')]
+    expect(options).toHaveLength(6)
+    expect(options[0].closest('section').querySelector('h2').textContent).toBe('Section A')
+    act(() => options[5].click())
+    act(() => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Submit session').click())
+    expect(onSave.mock.calls[0][0].answers.tutorialEffectiveness).toBe('Not applicable — I did not use the tutorial')
+  })
 })

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recover saved GeoScratch study data</title>
+  <style>
+    body { font: 16px/1.6 system-ui, sans-serif; color: #111827; background: #f8fafc; max-width: 1100px; margin: 36px auto; padding: 0 24px; }
+    h1 { font-size: 28px; } button { font: inherit; padding: 10px 16px; cursor: pointer; border: 1px solid #cbd5e1; border-radius: 6px; background: white; }
+    #backup { background: #0035af; color: white; } .session { background: white; border: 1px solid #cbd5e1; border-radius: 8px; padding: 20px; margin: 18px 0; }
+    .session h2 { margin: 0; font-size: 22px; } .session p { margin: 8px 0; } #error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>Recover saved study data</h1>
+  <p>Open this page in the participant’s original browser profile at the same domain and port as the study. It reads saved records only; it does not start a session, overwrite records, or clear data.</p>
+  <p><strong>Download the full backup first.</strong> It preserves the original stored values, including unfinished sessions. Then download individual sessions to read their questionnaire answers and events. Missing or unsaved data cannot be recreated.</p>
+  <button id="backup" type="button">Download all saved study data (JSON)</button>
+  <p id="summary" role="status"></p>
+  <p id="error" role="alert"></p>
+  <div id="sessions"></div>
+  <script type="module">
+    import { collectStudyBackup, recoverStudySessions, downloadRecoveryJson } from './study-recovery.js'
+    try {
+      const backup = { ...collectStudyBackup(localStorage), origin: location.origin }
+      const sessions = recoverStudySessions(backup)
+      document.querySelector('#backup').onclick = () => downloadRecoveryJson(backup, 'all-saved-study-data.json')
+      document.querySelector('#summary').textContent = `${sessions.length} session IDs found at ${location.origin}. ${Object.keys(backup.rawStorage).length} storage entries preserved.`
+      for (const session of sessions) {
+        const card = document.createElement('section')
+        card.className = 'session'
+        const heading = document.createElement('h2')
+        heading.textContent = session.researchId
+        card.append(heading)
+        for (const text of [
+          `First saved: ${session.firstSavedAt ?? 'Unknown'} · Last saved: ${session.lastSavedAt ?? 'Unknown'}`,
+          `Order: ${session.studyOrder ?? 'Not recorded'} · ${session.questionnaires.length} questionnaire records · ${session.lectureExerciseResponses.length} lecture submissions · ${session.interactionLog.length} interaction records`,
+          `Questionnaires: ${session.questionnaires.map(item => `${item.questionnaireId} (${item.status ?? 'unknown status'})`).join(', ') || 'None found'}`,
+        ]) { const p = document.createElement('p'); p.textContent = text; card.append(p) }
+        const button = document.createElement('button')
+        button.textContent = `Download ${session.researchId} (JSON)`
+        button.onclick = () => downloadRecoveryJson(session, `${session.researchId}-recovered.json`)
+        card.append(button)
+        document.querySelector('#sessions').append(card)
+      }
+      if (!sessions.length) document.querySelector('#error').textContent = 'No saved sessions were found. Check the original browser profile and the exact study domain and port. This page cannot access another browser’s storage.'
+    } catch (error) { document.querySelector('#error').textContent = `Could not read saved data: ${error.message}` }
+  </script>
+</body>
+</html>

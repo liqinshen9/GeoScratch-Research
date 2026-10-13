@@ -38,7 +38,7 @@ function connectionPosition(workspace, block, input) {
   return Blockly.utils.svgMath.wsToScreenCoordinates(workspace, new Blockly.utils.Coordinate(blockPosition.x + offset.x, blockPosition.y + offset.y))
 }
 
-function TutorialGuide({ onDone, labelToggleCount }) {
+function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
   const [coachHost, setCoachHost] = useState(null)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const [revision, setRevision] = useState(0)
@@ -313,7 +313,7 @@ function TutorialGuide({ onDone, labelToggleCount }) {
       </svg>
     )}
     {coachHost && createPortal(<section className="tutorial-coach" aria-label="Tutorial guide">
-      <div className="tutorial-coach__top"><span className="tutorial-eyebrow">{completed.length}/3</span>{workspaceStage !== 'done' && <button type="button" className="tutorial-skip" onClick={onDone}>Skip tutorial</button>}</div>
+      <div className="tutorial-coach__top"><span className="tutorial-eyebrow">{completed.length}/3</span>{workspaceStage !== 'done' && <button type="button" className="tutorial-skip" onClick={onSkip ?? onDone}>Skip tutorial</button>}</div>
       <div aria-live="polite">
         <h2>{browsing ? instructionTitle : title}</h2>
         {(browsing ? instructionDescription : description) && <p>{browsing ? instructionDescription : description}</p>}
@@ -333,7 +333,7 @@ function TutorialGuide({ onDone, labelToggleCount }) {
   </>
 }
 
-export default function SessionTutorial({ researchId, onDone }) {
+export default function SessionTutorial({ researchId, onDone, onSkip }) {
   const [labelToggleCount, setLabelToggleCount] = useState(0)
   return <div className="app-container flex h-dvh flex-col overflow-hidden">
     <main className="flex min-h-0 flex-1 flex-col">
@@ -341,7 +341,7 @@ export default function SessionTutorial({ researchId, onDone }) {
         workspaceId={`userstudy-Li-${researchId}-tutorial`} showDebugSolution={false}
         showAnswerHighlight={false} hideAnimationTransport wideTaskPanel
         toggleLabelsOnLeftClick onLabelsToggle={() => setLabelToggleCount((count) => count + 1)} />
-      <TutorialGuide onDone={onDone} labelToggleCount={labelToggleCount} />
+      <TutorialGuide onDone={onDone} onSkip={onSkip} labelToggleCount={labelToggleCount} />
     </main>
   </div>
 }

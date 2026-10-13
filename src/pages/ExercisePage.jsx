@@ -165,7 +165,8 @@ export default function ExercisePage({
   const isPerceptual = exercise.kind === 'perceptual'
   const passed = result.passed || (isPerceptual && perceptualPicked === exercise.mcq?.correctId)
   const studyEvaluation = JSON.stringify({ exerciseId: activeExercise, passed: Boolean(passed),
-    correct: Boolean(result.correct), incorrect: Boolean(result.incorrect), steps: result.steps ?? null })
+    correct: Boolean(result.correct), incorrect: Boolean(result.incorrect), steps: result.steps ?? null,
+    answer: result.answer ?? null })
   useEffect(() => {
     if (workspaceId?.startsWith('userstudy-Li-')) {
       window.dispatchEvent(new CustomEvent('geoscratch:exercise-evaluation', { detail: JSON.parse(studyEvaluation) }))

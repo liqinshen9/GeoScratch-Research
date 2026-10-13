@@ -195,11 +195,11 @@ function buildResponsePayload(answers, researchId) {
   }
 }
 
-export default function DemographicsQuestionnaire({ researchId, onComplete, onSave }) {
+export default function DemographicsQuestionnaire({ researchId, onComplete, onSave, storageWarning }) {
   const acceptResponses = true
   const [answers, setAnswers] = useState(() => readQuestionnaireDraft(researchId, 'demographics')?.rawAnswers ?? makeInitialAnswers(researchId))
   const [savedMessage, setSavedMessage] = useState('')
-  useQuestionnaireAutosave({ researchId, questionnaireId: 'demographics', answers, buildPayload: buildResponsePayload, enabled: acceptResponses })
+  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId: 'demographics', answers, buildPayload: buildResponsePayload, enabled: acceptResponses })
 
   function updateAnswer(id, value) {
     setAnswers((current) => ({ ...current, [id]: value }))
@@ -221,6 +221,7 @@ export default function DemographicsQuestionnaire({ researchId, onComplete, onSa
       <header className="user-study-li-form-header">
         <div>
           <h1>Demographics Questionnaire</h1>
+          {(storageError || storageWarning) && <p role="alert">{storageError || storageWarning}</p>}
         </div>
       </header>
 

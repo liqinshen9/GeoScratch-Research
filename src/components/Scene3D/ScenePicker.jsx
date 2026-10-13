@@ -8,9 +8,12 @@ import {
   findSelectableLine,
   findSelectablePointMarker,
   resolveSelectedBlockId,
+  resolveSrcBlockId,
   CLICK_MAX_DIST,
 } from '@/utils/scenePicking'
 import { getLabelsForObject, getLabelVisibilityKeysForObject } from './labels/labelData'
+import { describeSceneHit } from '@/study/session/sceneTracking'
+import { emitStudyEvent } from '@/study/session/studyEvents'
 
 function findClickLabelMarker(object) {
   let current = object
@@ -101,7 +104,12 @@ function ScenePicker({ onSelectBlock, onToggleLabels, toggleLabelsOnLeftClick = 
       }
       if (down.moved || classifyGesture(down, up) !== 'click') return
       const hits = raycastAt(event)
-      onSelectBlock(resolveSelectedBlockId(hits))
+      const selectedBlockId = resolveSelectedBlockId(hits)
+      const selectedHit = selectedBlockId
+        ? hits.find((hit) => resolveSrcBlockId(hit.object) === selectedBlockId) : hits[0]
+      emitStudyEvent('scene_object_click', { button: 0, selectedBlockId,
+        position: { x: event.clientX, y: event.clientY }, object: describeSceneHit(selectedHit, getLabelsForObject) })
+      onSelectBlock(selectedBlockId)
       if (toggleLabelsOnLeftClick) toggleClickedMarkerLabel(hits)
       else {
         const owner = hits.map((hit) => findLabelOwner(hit.object, getLabelsForObject))
@@ -115,12 +123,14 @@ function ScenePicker({ onSelectBlock, onToggleLabels, toggleLabelsOnLeftClick = 
     }
 
     const handleContextMenu = (event) => {
-      if (toggleLabelsOnLeftClick) return
       // A right-drag (OrbitControls pan) also ends with a contextmenu event --
       // leave the native menu alone then, only act on an in-place right-click.
       if (downRef.current?.moved) return
 
       const hits = raycastAt(event)
+      emitStudyEvent('scene_context_menu', { button: 2, position: { x: event.clientX, y: event.clientY },
+        object: describeSceneHit(hits[0], getLabelsForObject) })
+      if (toggleLabelsOnLeftClick) return
       const marker = hits.map((hit) => findSelectablePointMarker(hit.object)).find(Boolean)
       const line = marker ? null : hits.map((hit) => findSelectableLine(hit.object)).find(Boolean)
       const owner = marker

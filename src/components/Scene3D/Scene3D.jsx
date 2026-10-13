@@ -28,6 +28,8 @@ import { getLabelVisibilityKeysForObject, getLabelsForObject } from './labels/la
 import { ZoomInvariantScaler, DashZoomSync, FatLineSync } from './sizing/GlyphSizing'
 import { computeNestingRenderOrders } from '@/utils/nestingRenderOrder'
 import { getObjectFocus } from '@/utils/sceneFocus'
+import { describeCamera } from '@/study/session/sceneTracking'
+import { emitStudyEvent } from '@/study/session/studyEvents'
 
 const DEFAULT_CAMERA_OFFSET = new THREE.Vector3(...DEFAULT_CAMERA_POSITION)
 
@@ -306,6 +308,7 @@ export default function Scene3D({
         return next
       })
       if (labelKeys.length) onLabelsToggle?.({ labelKeys, visible: allHidden })
+      if (labelKeys.length) emitStudyEvent('labels_toggle', { labelKeys, visible: allHidden })
     },
     [visibleHiddenLabelKeys, onLabelsToggle],
   )
@@ -330,6 +333,8 @@ export default function Scene3D({
             minDistance={MIN_CAMERA_DISTANCE}
             maxDistance={MAX_CAMERA_DISTANCE}
             ref={handleControlsReady}
+            onStart={() => emitStudyEvent('camera_control_start', { camera: describeCamera(cameraRef.current, controlsRef.current) })}
+            onEnd={() => emitStudyEvent('camera_control_end', { camera: describeCamera(cameraRef.current, controlsRef.current) })}
           />
           <CameraHandle onReady={handleCameraReady} />
           <ScenePicker

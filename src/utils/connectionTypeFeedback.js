@@ -150,7 +150,15 @@ export function installConnectionTypeFeedback(workspace, onFeedback) {
     if (!mismatch) return
     if (draggedBlockId && connectedOutsideDraggedGroup(workspace, draggedBlockId)) return
 
-    onFeedback?.(mismatch.message)
+    const describeConnection = (connection) => {
+      const block = connection.getSourceBlock()
+      return { blockId: block.id, blockType: block.type, connectionType: connection.type,
+        inputName: block.inputList?.find((input) => input.connection === connection)?.name ?? null,
+        acceptedTypes: connection.getCheck() }
+    }
+    onFeedback?.(mismatch.message, { draggedBlockId,
+      draggedConnection: describeConnection(mismatch.draggedConnection),
+      targetConnection: describeConnection(mismatch.targetConnection), group: event.group || null })
   }
 
   workspace.addChangeListener(listener)

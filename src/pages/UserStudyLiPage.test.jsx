@@ -12,10 +12,10 @@ vi.mock('@/pages/ExercisePage', () => ({ default: ({ exerciseId, onNextExercise 
   <button onClick={onNextExercise}>{exerciseId}</button> }))
 vi.mock('./userStudyLi/DemographicsQuestionnaire', () => ({ default: ({ onComplete }) =>
   <button onClick={onComplete}>Finish demographics</button> }))
-vi.mock('./userStudyLi/TutorialWelcome', () => ({ default: ({ onFollow }) =>
-  <button onClick={onFollow}>Follow tutorial</button> }))
-vi.mock('./userStudyLi/SessionTutorial', () => ({ default: ({ onDone }) =>
-  <button onClick={onDone}>Finish tutorial</button> }))
+vi.mock('./userStudyLi/TutorialWelcome', () => ({ default: ({ onFollow, onSkip }) =>
+  <><button onClick={onFollow}>Follow tutorial</button><button onClick={onSkip}>Skip tutorial</button></> }))
+vi.mock('./userStudyLi/SessionTutorial', () => ({ default: ({ onDone, onSkip }) =>
+  <><button onClick={onDone}>Finish tutorial</button><button onClick={onSkip}>Skip remaining tutorial</button></> }))
 vi.mock('./userStudyLi/ConditionQuestionnaire', () => ({ default: ({ condition, conditionOrder, onComplete }) =>
   <button onClick={onComplete}>{condition} questionnaire {conditionOrder}</button> }))
 vi.mock('./userStudyLi/PostStudyQuestionnaire', () => ({ default: ({ conditionOrder, onComplete }) =>
@@ -245,5 +245,46 @@ describe('Li study routes', () => {
     expect(window.localStorage.getItem(`userstudyLi.sessionExport.${window.localStorage.getItem('userstudyLi.currentResearchId')}`)).toBeTruthy()
     click('Download study data (ZIP)')
     expect(URL.createObjectURL).toHaveBeenCalledOnce()
+  })
+
+  it('still downloads the archive if the final local backup exceeds browser storage', () => {
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    finishLectureSlides()
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    const originalSetItem = window.Storage.prototype.setItem
+    vi.spyOn(window.Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key.startsWith('userstudyLi.sessionExport.')) throw new Error('quota exceeded')
+      return originalSetItem.call(this, key, value)
+    })
+    click('Post-study Lecture slides first')
+    expect(URL.createObjectURL).toHaveBeenCalledOnce()
+    expect(host.querySelector('[role="alert"]').textContent).toContain('local session backup')
+  })
+
+  it.each([
+    ['skip before starting', ['Skip tutorial'], 'skipped', 'welcome'],
+    ['skip after starting', ['Follow tutorial', 'Skip remaining tutorial'], 'skipped-after-start', 'in-tutorial'],
+    ['complete the tutorial', ['Follow tutorial', 'Finish tutorial'], 'completed', null],
+  ])('records whether participants %s in the trial export', (_description, buttons, status, skipSource) => {
+    click('Condition 1: GeoScratchGeoScratch → Lecture slides')
+    buttons.forEach(click)
+    click('create-complex-object')
+    click('cube-point-pivot-rotation')
+    click('point-plane-distance')
+    click('GeoScratch Exercise questionnaire First')
+    finishLectureSlides()
+    click('Lecture slides questionnaire Second')
+    click('Post-study GeoScratch Exercise first')
+    const researchId = window.localStorage.getItem('userstudyLi.currentResearchId')
+    const archive = JSON.parse(window.localStorage.getItem(`userstudyLi.sessionExport.${researchId}`))
+    const trial = archive.files.find((file) => file.data.exerciseId === 'create-complex-object').data
+    expect(trial.tutorial).toMatchObject({ status, skipSource })
+    const events = trial.events.filter((event) => event.type.startsWith('tutorial_'))
+    expect(events.map((event) => event.type)).toEqual(status === 'skipped' ? ['tutorial_skip']
+      : status === 'completed' ? ['tutorial_start', 'tutorial_complete'] : ['tutorial_start', 'tutorial_skip'])
+    expect(events.every((event) => Number.isFinite(Date.parse(event.occurredAt)))).toBe(true)
   })
 })

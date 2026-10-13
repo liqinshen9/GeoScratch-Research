@@ -223,6 +223,11 @@ export function createInteractionTracker({ researchId, storage = window.localSto
   const timer = setInterval(flush, 1000)
 
   listen(window, 'geoscratch:exercise-evaluation', (event) => record('exercise_evaluation', event.detail))
+  listen(window, 'geoscratch:study-event', (event) => {
+    const { type, details, context: suppliedContext } = event.detail
+    const entry = record(type, details, suppliedContext ? { ...context, ...suppliedContext } : context)
+    if (entry && ['workspace_snapshot', 'connection_warning'].includes(type)) flush()
+  })
 
   return { record, flush, setContext, read: () => { flush(); return [...readInteractionRecords(researchId, storage), ...pending] },
     stop() {

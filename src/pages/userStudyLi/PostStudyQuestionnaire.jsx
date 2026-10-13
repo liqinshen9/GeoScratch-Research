@@ -34,6 +34,11 @@ const POST_STUDY_SECTIONS = [
         id: 'blocksViewConnectionClear',
         label: 'The connection between the blocks and the 3D view was clear.',
       },
+      {
+        id: 'tutorialEffectiveness',
+        label: 'The tutorial animation helped me learn how to use GeoScratch to complete the exercises.',
+        allowNotApplicable: true,
+      },
     ],
     open: [
       {
@@ -272,14 +277,14 @@ function buildPostResponsePayload(answers, researchId) {
   }
 }
 
-export default function PostStudyQuestionnaire({ researchId, conditionOrder, onComplete, onSave }) {
+export default function PostStudyQuestionnaire({ researchId, conditionOrder, onComplete, onSave, storageWarning }) {
   const acceptPostResponses = true
   const [postAnswers, setPostAnswers] = useState(() => (readQuestionnaireDraft(researchId, 'post-study')?.rawAnswers ?? {
     ...makeInitialPostAnswers(researchId),
     ...(conditionOrder ? { conditionOrder } : {}),
   }))
   const [postSavedMessage, setPostSavedMessage] = useState('')
-  useQuestionnaireAutosave({ researchId, questionnaireId: 'post-study', answers: postAnswers, buildPayload: buildPostResponsePayload, enabled: acceptPostResponses })
+  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId: 'post-study', answers: postAnswers, buildPayload: buildPostResponsePayload, enabled: acceptPostResponses })
 
   function updatePostAnswer(id, value) {
     setPostAnswers((current) => ({ ...current, [id]: value }))
@@ -301,6 +306,7 @@ export default function PostStudyQuestionnaire({ researchId, conditionOrder, onC
       <header className="user-study-li-form-header">
         <div>
           <h1>Post-Study Questionnaire</h1>
+          {(storageError || storageWarning) && <p role="alert">{storageError || storageWarning}</p>}
           <p>
             To be completed after both conditions. Please answer based on your overall experience
             across the whole study.
@@ -374,6 +380,12 @@ export default function PostStudyQuestionnaire({ researchId, conditionOrder, onC
                       <span>{option}</span>
                     </label>
                   ))}
+                  {field.allowNotApplicable && <label className="user-study-li-option user-study-li-rating-na">
+                    <input type="radio" name={field.id} value="Not applicable — I did not use the tutorial"
+                      checked={postAnswers[field.id] === 'Not applicable — I did not use the tutorial'}
+                      onChange={(event) => updatePostAnswer(field.id, event.target.value)} />
+                    <span>Not applicable — I did not use the tutorial</span>
+                  </label>}
                 </div>
               </fieldset>
             ))}

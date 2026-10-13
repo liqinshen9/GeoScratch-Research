@@ -17,8 +17,32 @@ Tracking runs only while `UserStudyLiPage` is mounted and a research session has
 | `answer_submit` | Exact lecture submission, attempt represented as a separate record, submission timestamp, automatic correctness where available. Written answers are not automatically graded. |
 | `questionnaire_submit` | Questionnaire type. Questionnaire content remains in the existing questionnaire payload. |
 | `exercise_evaluation` | GeoScratch exercise ID, correctness, pass state, and per-step states when the evaluation changes. This includes initial states and is not necessarily a deliberate submission. |
+| `tutorial_start` | Participant chooses Follow me; source is `welcome`. |
+| `tutorial_skip` | Participant skips the tutorial; source distinguishes `welcome` from `in-tutorial`. |
+| `tutorial_complete` | Participant chooses Start trial exercise at the end of the tutorial. |
+| `block_create`, `block_delete` | IDs/types of created or deleted blocks and their serialized state, including descendants. |
+| `block_field_change` | Field name, block ID/type, previous value and new value (for example DEGREES: 30 → 90). Dropdowns such as rotation axis are included. |
+| `block_change` | Other committed block changes: mutation, comment, collapse/expand, enabled state and inline layout. |
+| `block_move` | Old/new parent, socket name, position and Blockly move reasons. |
+| `block_connect`, `block_disconnect` | Exact child block, parent block/type and input socket. Blockly uses an absent input name for next/previous statement links. |
+| `block_drag_start`, `block_drag_result` | Blockly drag ID, dragged block IDs, actual connections before/after drop, new/removed connections, connected/unconnected outcome and whether a warning appeared. |
+| `connection_warning` | The actual incompatible-block warning text when shown, dragged/target block IDs and types, socket/type constraints and drag ID when available. No warning is invented for compatible blocks that merely compute a wrong answer. |
+| `blockly_event` | Block selection/clicks, toolbox-category selection, workspace viewport changes and variable create/delete/rename events. |
+| `workspace_undo`, `workspace_redo` | Operation and whether the serialized workspace changed; followed by a snapshot. |
+| `workspace_snapshot` | Complete Blockly JSON state, block positions/connections/fields, viewport and saved custom-block definitions. Recorded initially, at exit/page hiding, on snapshot requests and after undo/redo. |
+| `scene_object_click`, `scene_context_menu` | Raycast object identity/type, geometry type, source block ID, labels, point coordinates where present, world position and hit position. Empty-space selection has a null object. |
+| `labels_toggle` | Label visibility keys and new visible/hidden state. |
+| `camera_control_start`, `camera_control_end` | Camera position, orientation, zoom and OrbitControls target at control start/end, not a continuous camera replay. |
+| `panel_state` | Actual toolbox category, palette/trash open states and Make a Block dialog state after React changes them. |
+| `custom_block_saved`, `custom_block_updated`, `custom_block_deleted` | Saved My Blocks definitions and names, with before/after state for edits. |
 
 Each event has a unique ID, stream ID, sequence number, UTC timestamp, elapsed time from tracker start, research ID, study order and condition/phase/exercise context. GeoScratch activity records also include viewport dimensions; lecture submissions do not. Sequence numbers apply within a stream. Timestamps are browser-generated; there is no Firebase receipt timestamp yet.
+
+## GeoScratch exercise files and tutorial outcomes
+
+The trial file (`geoscratch_trial.json`) contains tutorial/welcome events followed by the trial exercise for creating the cube-and-corner-point object. Its `tutorial` summary explicitly reports `skipped`, `skipped-after-start`, `completed`, `started`, or `not-recorded`, with start/skip/completion timestamps and skip source. Exercise 1 tracks rotating the cube and corner point; Exercise 2 tracks the point-to-plane distance exercise. Tutorial skipping has its own semantic event in addition to any captured mouse click, including cancellation of the welcome dialog.
+
+Post-study usability Section A includes `tutorialEffectiveness`: “The tutorial animation helped me learn how to use GeoScratch to complete the exercises.” It uses the existing 1–5 agreement scale plus “Not applicable — I did not use the tutorial”. The answer is autosaved and included in the post-study JSON.
 
 ## Lecture exercise timing
 
@@ -32,9 +56,15 @@ Click/drag/scroll targets include their app area, HTML/SVG tag, element ID, expl
 
 Areas distinguish the block toolbox, block palette, block workspace, 3D view, exercise instructions, tutorial guide, lecture slides, cube diagrams, written answer area, answer options, questionnaires and navigation. Other elements use `study-page`. Icon controls without labels may have only a selector, role, ID or classes. Selectors describe the DOM at event time and may change as the UI changes.
 
-3D canvas interactions identify the canvas/view, not a specific 3D object. Mouse coordinates alone do not identify a rendered object. Future raycast/selection instrumentation can add object identities. DOM clicks record panel-opening controls, but do not independently prove a panel opened successfully. Panel state and Blockly connection events can be added as semantic events later.
+Raw mouse events still identify the canvas/view. Separate scene-picking events identify the actual raycast object and its source block. UUIDs identify the rendered object at that moment; source block IDs link objects across scene rebuilds. Raw clicks on panel controls are supplemented by `panel_state`. Generic pointer drags are supplemented by Blockly connection events and an actual graph check after drop.
 
-Ordinary mouse movement is not stored. Movement during a pressed gesture is used only to determine drag threshold and total distance; a full cursor trajectory is not stored. Typed text, field values, keystrokes, full DOM snapshots and IP addresses are not collected by this tracker. Deliberately submitted lecture answers are recorded in full.
+Ordinary mouse movement is not stored. Movement during a pressed gesture is used only to determine drag threshold and total distance; a full cursor trajectory is not stored. Committed Blockly field values, comments, mutations and variable names are recorded, including programmatic changes that emit Blockly events. `recordUndo` and event groups are retained; the logger does not assert that every emitted change was typed by the participant. Raw keystrokes, uncommitted or rejected field text, full DOM snapshots and IP addresses are not collected. Deliberately submitted lecture answers are recorded in full.
+
+## Final workspace and reconstruction
+
+Each GeoScratch exercise file includes `finalWorkspace`, the latest complete snapshot for that exercise (or null if none was captured). It contains `capturedAt`, capture reason, `format: blockly-json`, serialized `state`, workspace viewport and `customBlocks`. The full latest snapshot is placed here once; its timeline event keeps the capture reason but omits the duplicate state. Earlier snapshots remain in the chronological events. Tutorial snapshots stay within the trial timeline and do not replace the final trial arrangement.
+
+Blockly JSON preserves nested inputs, statement chains, field values, block IDs, positions and extra state. Restore it with Blockly's workspace serialization loader in an editor with the same block definitions and saved custom blocks registered. Undo/redo and initial snapshots provide checkpoints in addition to the change timeline. This is sufficient to inspect the final arrangement; an automatic replay/viewer UI is not included.
 
 ## Saving and exporting
 
@@ -50,6 +80,12 @@ For lecture-first, the order is: demographics, lecture exercise 1, lecture exerc
 
 Local draft saving and tracking backups remain enabled in either mode. The ordered file payloads are saved at `userstudyLi.sessionExport.<researchId>`. The completion page's **Download study data (ZIP)** works in either mode. Individual questionnaire submissions do not trigger separate downloads. Extracting the ZIP produces the requested research-ID folder; the app does not silently write a folder to the participant's disk.
 
-This is local browser storage, not a Firebase integration. No Firebase package, project configuration or cloud upload has been added. Browser storage can be cleared or fill up; failures produce a warning in the exercise/completion views and pending in-memory events remain available for export. Sudden process termination can lose the unflushed buffer. Central storage will require Firebase configuration and a retry queue that acknowledges uploads and reuses event IDs.
+This is local browser storage, not a Firebase integration. No Firebase package, project configuration or cloud upload has been added. Browser storage can be cleared or fill up; failures produce a warning in the exercise/completion views and pending in-memory events remain available for export. Automatic ZIP download is still attempted in user study mode if the final local backup fails. Sudden process termination can lose the unflushed buffer. Central storage will require Firebase configuration and a retry queue that acknowledges uploads and reuses event IDs.
 
 The study's separate consent form explains the tracking; the session start page does not repeat that notice. Retention and participant consent follow the study's existing procedure.
+
+## Recovering unfinished sessions
+
+Open `/study-recovery.html` on the original study origin (same domain and port) in the participant's original browser profile. The standalone page reads storage without starting a study, mounting the app, writing records, or clearing anything. Download **all saved study data** first: the JSON preserves exact original storage strings, including malformed entries. Individual session downloads collect questionnaire drafts and legacy submitted copies, lecture submissions/timings, interaction records, saved workspace XML, custom blocks, and any completed archive. Sessions are listed by their earliest recorded timestamp so an earlier unknown research ID can be identified. Distinct draft and submitted answers are retained; sessions are never automatically merged. Missing timestamps stay null, and records that never reached storage cannot be reconstructed.
+
+Questionnaire backup copies no longer duplicate the entire interaction log or lecture submissions. These records are stored separately. Full/unavailable storage cannot throw out of questionnaire autosave or submission and block navigation: failed questionnaire writes remain in memory for the current tab's final ZIP, with a visible warning to finish and download before closing/refreshing. This fallback is not durable across a refresh. Existing saved sessions and legacy backups are left intact.

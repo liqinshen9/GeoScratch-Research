@@ -33,7 +33,7 @@ function leanEvent(event, exerciseId) {
   for (const [key, value] of Object.entries(event)) {
     if (['researchId', 'studyOrder', 'conditionId', 'phase', 'exerciseId', 'streamId', 'eventId', 'schemaVersion',
       'sequence', 'type', 'occurredAt', 'sessionElapsedMs'].includes(key)) continue
-    result[key] = value
+    if (value !== undefined) result[key] = value
   }
   return result
 }
@@ -66,10 +66,27 @@ export function buildSessionFiles({ researchId, studyOrder, questionnaires = [],
     }, { conditionId: 'lecture', conditionNumber, exerciseId })
   }
   function addGeoScratch(exerciseId, name, conditionNumber) {
-    const events = chronological(interactionLog.filter((event) => event.conditionId === 'geoscratch'
+    const rawEvents = chronological(interactionLog.filter((event) => event.conditionId === 'geoscratch'
       && event.phase === 'geoscratch' && (event.exerciseId === exerciseId || (exerciseId === TRIAL && event.exerciseId === 'tutorial'))), 'occurredAt')
-      .map((event) => leanEvent(event, exerciseId))
-    add(name, 'exercise-tracking', { events }, { conditionId: 'geoscratch', conditionNumber, exerciseId })
+    const finalSnapshot = [...rawEvents].reverse().find((event) => event.type === 'workspace_snapshot'
+      && event.exerciseId === exerciseId && event.snapshot)
+    const events = rawEvents.map((event) => {
+      // Keep the latest full arrangement once, in finalWorkspace. Earlier snapshots remain in the timeline.
+      const details = event === finalSnapshot ? { ...event, snapshot: undefined } : event
+      return leanEvent(details, exerciseId)
+    })
+    let tutorial
+    if (exerciseId === TRIAL) {
+      const started = events.find((event) => event.type === 'tutorial_start')
+      const skipped = events.find((event) => event.type === 'tutorial_skip')
+      const completed = events.find((event) => event.type === 'tutorial_complete')
+      tutorial = { status: skipped ? started ? 'skipped-after-start' : 'skipped' : completed ? 'completed' : started ? 'started' : 'not-recorded',
+        startedAt: started?.occurredAt ?? null, skippedAt: skipped?.occurredAt ?? null,
+        completedAt: completed?.occurredAt ?? null, skipSource: skipped?.source ?? null }
+    }
+    add(name, 'exercise-tracking', { ...(tutorial ? { tutorial } : {}),
+      finalWorkspace: finalSnapshot ? { capturedAt: finalSnapshot.occurredAt, reason: finalSnapshot.reason, ...finalSnapshot.snapshot } : null,
+      events }, { conditionId: 'geoscratch', conditionNumber, exerciseId })
   }
 
   addQuestionnaire('demographics', 'demographics')

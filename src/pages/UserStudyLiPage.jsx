@@ -55,9 +55,12 @@ const SETTINGS = Object.freeze({
 })
 
 function saveQuestionnairePayload(payload, type, backupKey) {
-  const storedResponses = JSON.parse(window.localStorage.getItem(backupKey) || '[]')
-  storedResponses.push({ ...payload, responseType: type })
-  window.localStorage.setItem(backupKey, JSON.stringify(storedResponses))
+  try {
+    const storedResponses = JSON.parse(window.localStorage.getItem(backupKey) || '[]')
+    storedResponses.push({ ...payload, responseType: type })
+    window.localStorage.setItem(backupKey, JSON.stringify(storedResponses))
+    return true
+  } catch { return false }
 }
 
 function styleStudyPoints(objects) {
@@ -141,9 +144,13 @@ export default function UserStudyLiPage() {
     }
     try {
       window.localStorage.setItem(`userstudyLi.sessionExport.${researchId}`, JSON.stringify(buildSessionFiles(payload)))
-      if (userStudyMode) downloadSessionZip(payload)
     } catch {
-      setExportError('The automatic export could not finish. Use Download study data (ZIP) to save a copy.')
+      setExportError('The local session backup could not be saved. Download the study ZIP before closing this page.')
+    }
+    if (userStudyMode) {
+      try { downloadSessionZip(payload) } catch {
+        setExportError('The automatic export could not finish. Use Download study data (ZIP) to save a copy.')
+      }
     }
   }, [phase, researchId, studyOrder, lectureResponses, interactionTracking, userStudyMode, readLectureTimings])
 
@@ -182,9 +189,30 @@ export default function UserStudyLiPage() {
   function saveStudyQuestionnaire(payload, type, backupKey) {
     const questionnaireId = phase === 'demographics' ? 'demographics' : phase === 'post'
       ? 'post-study' : phase === 'lecture-questionnaire' ? 'condition-lecture' : 'condition-geoscratch'
-    markQuestionnaireSubmitted(researchId, questionnaireId, payload)
+    const saved = markQuestionnaireSubmitted(researchId, questionnaireId, payload)
     interactionTracking.record('questionnaire_submit', { questionnaireType: type })
-    saveQuestionnairePayload({ ...payload, interactionLog: interactionTracking.read() }, type, backupKey)
+    interactionTracking.read()
+    // Logs are already stored separately. Duplicating the full log here can exhaust storage and block Next.
+    const backupSaved = saveQuestionnairePayload(payload, type, backupKey)
+    if (!saved || !backupSaved) setExportError('Some answers could not be backed up in browser storage. Keep this tab open, finish the study, and download the study ZIP before closing or refreshing.')
+  }
+
+  function followTutorial() {
+    interactionTracking.record('tutorial_start', { exerciseId: 'tutorial', source: 'welcome' })
+    interactionTracking.read()
+    setTutorialPhase('active')
+  }
+
+  function skipTutorial(source) {
+    interactionTracking.record('tutorial_skip', { exerciseId: 'tutorial', source })
+    interactionTracking.read()
+    setTutorialPhase('done')
+  }
+
+  function finishTutorial() {
+    interactionTracking.record('tutorial_complete', { exerciseId: 'tutorial', source: 'in-tutorial' })
+    interactionTracking.read()
+    setTutorialPhase('done')
   }
 
   if (phase === 'new') {
@@ -199,6 +227,7 @@ export default function UserStudyLiPage() {
           <button className="user-study-li-primary-action" type="button" onClick={startNewSession}>
             Start new session
           </button>
+          <p><a href={`${import.meta.env.BASE_URL}study-recovery.html`} target="_blank" rel="noopener noreferrer">Recover saved study data</a></p>
         </section>
       </div>
     )
@@ -207,6 +236,7 @@ export default function UserStudyLiPage() {
   if (phase === 'demographics') {
     return (
       <DemographicsQuestionnaire
+        storageWarning={exportError}
         researchId={researchId}
         onComplete={() => setPhase('order')}
         onSave={saveStudyQuestionnaire}
@@ -231,15 +261,14 @@ export default function UserStudyLiPage() {
     const details = conditionDetails(studyOrder, condition)
     return (
       <ConditionQuestionnaire
+        storageWarning={exportError}
         key={phase}
         researchId={researchId}
         condition={details.condition}
         conditionOrder={details.conditionOrder}
         onComplete={advanceCondition}
         onSave={(payload, type, backupKey) => saveStudyQuestionnaire(
-          { ...payload, studyOrder, conditionId: condition,
-            ...(condition === 'lecture' ? { lectureExerciseResponses: lectureResponses } : {}),
-          }, type, backupKey,
+          { ...payload, studyOrder, conditionId: condition }, type, backupKey,
         )}
       />
     )
@@ -248,11 +277,12 @@ export default function UserStudyLiPage() {
   if (phase === 'post') {
     return (
       <PostStudyQuestionnaire
+        storageWarning={exportError}
         researchId={researchId}
         conditionOrder={conditionDetails(studyOrder, 'geoscratch').studyOrder}
         onComplete={advanceCondition}
         onSave={(payload, type, backupKey) => saveStudyQuestionnaire(
-          { ...payload, studyOrder, lectureExerciseResponses: lectureResponses }, type, backupKey,
+          { ...payload, studyOrder }, type, backupKey,
         )}
       />
     )
@@ -285,13 +315,13 @@ export default function UserStudyLiPage() {
   }
 
   if (tutorialPhase === 'active') {
-    return <SessionTutorial researchId={researchId} onDone={() => setTutorialPhase('done')} />
+    return <SessionTutorial researchId={researchId} onDone={finishTutorial} onSkip={() => skipTutorial('in-tutorial')} />
   }
 
   return (
     <div className="app-container flex h-dvh flex-col overflow-hidden">
       {tutorialPhase === 'welcome' && exerciseIndex === 0 && <TutorialWelcome
-        onFollow={() => setTutorialPhase('active')} onSkip={() => setTutorialPhase('done')} />}
+        onFollow={followTutorial} onSkip={() => skipTutorial('welcome')} />}
       <main className="flex min-h-0 flex-1 flex-col">
         {interactionTracking.storageError && <p role="alert">{interactionTracking.storageError}</p>}
         <ExercisePage

@@ -154,7 +154,7 @@ function buildConditionResponsePayload(answers, researchId) {
   }
 }
 
-export default function ConditionQuestionnaire({ researchId, condition, conditionOrder, onComplete, onSave }) {
+export default function ConditionQuestionnaire({ researchId, condition, conditionOrder, onComplete, onSave, storageWarning }) {
   const questionnaireId = condition === 'Lecture slides' ? 'condition-lecture' : 'condition-geoscratch'
   const acceptConditionResponses = true
   const [conditionAnswers, setConditionAnswers] = useState(() =>
@@ -164,7 +164,7 @@ export default function ConditionQuestionnaire({ researchId, condition, conditio
     }),
   )
   const [conditionSavedMessage, setConditionSavedMessage] = useState('')
-  useQuestionnaireAutosave({ researchId, questionnaireId, answers: conditionAnswers, buildPayload: buildConditionResponsePayload, enabled: acceptConditionResponses })
+  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId, answers: conditionAnswers, buildPayload: buildConditionResponsePayload, enabled: acceptConditionResponses })
 
   function updateConditionAnswer(id, value) {
     setConditionAnswers((current) => ({ ...current, [id]: value }))
@@ -186,6 +186,7 @@ export default function ConditionQuestionnaire({ researchId, condition, conditio
       <header className="user-study-li-form-header">
         <div>
           <h1>Condition Questionnaire</h1>
+          {(storageError || storageWarning) && <p role="alert">{storageError || storageWarning}</p>}
           <p>
             Complete this after each condition. Answer only about the condition you just completed.
           </p>

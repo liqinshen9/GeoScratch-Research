@@ -20,6 +20,7 @@ import {
 import { useBlockSelectionSync } from '@/components/BlocksCanvas/hooks/useBlockSelectionSync'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
 import { canonicalizeWorkspaceXml, nameCompositeBlockXml } from '@/utils/blocklyXml'
+import { emitStudyEvent, workspaceStudyContext } from '@/study/session/studyEvents'
 import './BlocksCanvas.css'
 
 const BUILT_IN_BLOCK_TYPES = new Set(
@@ -91,6 +92,11 @@ export default function BlocksCanvas({
   } = useBlockTrash(workspace, syncScene)
 
   const closePalette = useCallback(() => setPaletteOpen(false), [])
+  useEffect(() => {
+    const context = workspaceStudyContext(id)
+    if (context) emitStudyEvent('panel_state', { categoryId, paletteOpen, trashPanelOpen,
+      makeBlockDialog: myBlockDialog?.type ?? null }, context)
+  }, [id, categoryId, paletteOpen, trashPanelOpen, myBlockDialog?.type])
   useBlockSelectionSync(workspace, selectedBlockId, setSelectedBlockId, closePalette)
 
   const handleClearWorkspace = useCallback(() => {
