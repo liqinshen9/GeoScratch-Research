@@ -33,7 +33,12 @@ function finishGeoScratch() {
   click('point-plane-distance')
 }
 function finishLectureSlides() {
-  expect(host.querySelector('h1').textContent).toBe('Lecture slides')
+  expect(host.querySelector('h1').textContent).toBe('Exercise 1: Rotate a cube and its corner point')
+  expect(host.querySelector('#lecture-point-plane-title')).toBeNull()
+  expect([...host.querySelectorAll('button')].some((button) => button.textContent === 'Continue to questionnaire')).toBe(false)
+  click('Next')
+  expect(host.querySelector('h1').textContent).toBe('Exercise 2: Calculate the shortest distance from a point to a plane')
+  expect(host.querySelector('#lecture-cube-title')).toBeNull()
   click('Continue to questionnaire')
 }
 
@@ -52,6 +57,8 @@ describe('Li study routes', () => {
     host.remove()
     window.localStorage.clear()
     delete globalThis.IS_REACT_ACT_ENVIRONMENT
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('completes GeoScratch then lecture slides with a questionnaire after each', () => {
@@ -74,5 +81,76 @@ describe('Li study routes', () => {
     click('GeoScratch Exercise questionnaire Second')
     click('Post-study Lecture slides first')
     expect(host.querySelector('h1').textContent).toBe('Study session complete')
+  })
+
+  it('checks only the submitted lecture answer and clears feedback when the choice changes', () => {
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    click('Next')
+    const submit = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Submit')
+    expect(submit.disabled).toBe(true)
+    for (const answer of ['dot-product', 'none', 'on-plane', 'divide-squared-normal', 'distance']) {
+      act(() => host.querySelector(`input[value="${answer}"]`).click())
+      expect(host.querySelector('[role="status"]')).toBeNull()
+      click('Submit')
+      const result = host.querySelector('[role="status"]')
+      expect(result.textContent).toBe(answer === 'distance' ? '✓' : '✗')
+      expect(result.closest('label').querySelector('input').value).toBe(answer)
+      expect(host.querySelectorAll('[role="status"]').length).toBe(1)
+    }
+  })
+
+  it('provides only a description field for the cube exercise before Next', () => {
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    expect(host.querySelector('textarea')).toBeTruthy()
+    expect(host.querySelectorAll('input[type="radio"]')).toHaveLength(0)
+    expect(host.querySelector('[role="status"]')).toBeNull()
+    click('Next')
+    expect(host.querySelector('h1').textContent).toBe('Exercise 2: Calculate the shortest distance from a point to a plane')
+  })
+
+  it('saves lecture submissions with the session ID and offers a JSON download after the study', () => {
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    const textarea = host.querySelector('textarea')
+    const answer = 'Translate (1, 1, 1), rotate Y 90°, translate (-1, -1, -1).'
+    act(() => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, answer)
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    click('Submit')
+    expect(host.querySelector('[role="status"]').textContent).toBe('Answer saved.')
+    let records = JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses'))
+    expect(records).toHaveLength(1)
+    expect(records[0]).toMatchObject({
+      exerciseId: 'cube-point-pivot-rotation', answer,
+      researchId: window.localStorage.getItem('userstudyLi.currentResearchId'),
+      conditionId: 'lecture',
+    })
+    expect(Number.isNaN(Date.parse(records[0].submittedAt))).toBe(false)
+    click('Submit')
+    act(() => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'Revised answer: rotate about the origin.')
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    click('Submit')
+    records = JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses'))
+    expect(records.map((record) => record.answer)).toEqual([answer, answer, 'Revised answer: rotate about the origin.'])
+    click('Next')
+    act(() => host.querySelector('input[value="distance"]').click())
+    click('Submit')
+    records = JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses'))
+    expect(records).toHaveLength(4)
+    expect(records[3]).toMatchObject({ exerciseId: 'point-plane-distance', answer: 'distance', correct: true })
+    click('Continue to questionnaire')
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    click('Post-study Lecture slides first')
+    const createObjectURL = vi.fn(() => 'blob:lecture-answers')
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() })
+    const download = vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    click('Download lecture answers (JSON)')
+    expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
+    expect(download).toHaveBeenCalledOnce()
+    expect(download.mock.instances[0].download).toContain('lecture-answers')
   })
 })

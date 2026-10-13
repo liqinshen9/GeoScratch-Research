@@ -19,6 +19,7 @@ const STUDY_EXERCISES = [
   { id: 'point-plane-distance', title: 'Calculate the shortest distance from a point to a plane' },
 ]
 const CURRENT_RESEARCH_ID_KEY = 'userstudyLi.currentResearchId'
+const LECTURE_RESPONSES_KEY = 'userstudyLi.lectureExerciseResponses'
 
 const POINT_STYLES = {
   attached_corner_point: { color: '#3b82f6', label: 'P', anchor: 'p' },
@@ -114,6 +115,7 @@ export default function UserStudyLiPage() {
   const [studyOrder, setStudyOrder] = useState(null)
   const [researchId, setResearchId] = useState('')
   const [tutorialPhase, setTutorialPhase] = useState('welcome')
+  const [lectureResponses, setLectureResponses] = useState([])
   const exercise = STUDY_EXERCISES[exerciseIndex]
   const exerciseId = exercise.id
 
@@ -129,12 +131,20 @@ export default function UserStudyLiPage() {
     setExerciseIndex(0)
     setTutorialPhase('welcome')
     setStudyOrder(null)
+    setLectureResponses([])
     setPhase('demographics')
     window.localStorage.setItem(CURRENT_RESEARCH_ID_KEY, nextResearchId)
   }
 
   function advanceCondition() {
     setPhase(nextStudyPhase(studyOrder, phase))
+  }
+
+  function saveLectureAnswer(response) {
+    const record = { ...response, researchId, studyOrder, conditionId: 'lecture' }
+    const storedResponses = JSON.parse(window.localStorage.getItem(LECTURE_RESPONSES_KEY) || '[]')
+    window.localStorage.setItem(LECTURE_RESPONSES_KEY, JSON.stringify([...storedResponses, record]))
+    setLectureResponses((responses) => [...responses, record])
   }
 
   if (phase === 'new') {
@@ -172,7 +182,7 @@ export default function UserStudyLiPage() {
   }
 
   if (phase === 'lecture') {
-    return <LectureSlides onComplete={advanceCondition} />
+    return <LectureSlides onComplete={advanceCondition} onSubmitAnswer={saveLectureAnswer} />
   }
 
   if (phase === 'geoscratch-questionnaire' || phase === 'lecture-questionnaire') {
@@ -186,7 +196,9 @@ export default function UserStudyLiPage() {
         conditionOrder={details.conditionOrder}
         onComplete={advanceCondition}
         onSave={(payload, type, backupKey) => saveQuestionnairePayload(
-          { ...payload, studyOrder, conditionId: condition }, type, backupKey,
+          { ...payload, studyOrder, conditionId: condition,
+            ...(condition === 'lecture' ? { lectureExerciseResponses: lectureResponses } : {}),
+          }, type, backupKey,
         )}
       />
     )
@@ -199,7 +211,7 @@ export default function UserStudyLiPage() {
         conditionOrder={conditionDetails(studyOrder, 'geoscratch').studyOrder}
         onComplete={advanceCondition}
         onSave={(payload, type, backupKey) => saveQuestionnairePayload(
-          { ...payload, studyOrder }, type, backupKey,
+          { ...payload, studyOrder, lectureExerciseResponses: lectureResponses }, type, backupKey,
         )}
       />
     )
@@ -212,6 +224,11 @@ export default function UserStudyLiPage() {
           <h1 id="session-complete-title">Study session complete</h1>
           <p>Research ID: {researchId}</p>
           <footer className="user-study-li-session-footer">
+            {lectureResponses.length > 0 && <button
+              className="user-study-li-primary-action"
+              type="button"
+              onClick={() => downloadJson({ researchId, studyOrder, submittedAt: new Date().toISOString(), lectureExerciseResponses: lectureResponses }, 'lecture-answers')}
+            >Download lecture answers (JSON)</button>}
             <button
               className="user-study-li-new-session-action"
               type="button"
