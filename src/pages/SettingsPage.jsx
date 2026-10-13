@@ -38,6 +38,7 @@ function ToggleRow({ label, description, checked, onChange, settingKey }) {
       </div>
       <input
         type="checkbox"
+        aria-label={label}
         checked={checked}
         disabled={locked}
         onChange={(e) => onChange(e.target.checked)}
@@ -173,6 +174,13 @@ export default function SettingsPage() {
 
         <main className="settings-layout">
           <SettingsSection title="General" className="settings-card--wide">
+            <ToggleRow
+              label="User study mode"
+              description="Automatically download a study ZIP containing ordered JSON files when a session finishes. Turn off during development to avoid automatic downloads. Local backups and manual export remain available."
+              checked={settings.userStudyMode}
+              settingKey="userStudyMode"
+              onChange={(value) => updateSetting('userStudyMode', value)}
+            />
             <SelectField
               label="Theme"
               value={settings.theme}

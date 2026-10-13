@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Switch } from '@/components/ui/switch'
+import { readQuestionnaireDraft, useQuestionnaireAutosave } from '@/study/session/questionnaireDrafts'
 
-const POST_RESPONSE_SETTING_KEY = 'userstudyLi.acceptPostStudyResponses'
 export const POST_RESPONSE_BACKUP_KEY = 'userstudyLi.postStudyResponses'
 const LIKERT_OPTIONS = ['1', '2', '3', '4', '5']
 
@@ -223,11 +222,6 @@ function todayForDateInput() {
   return offsetDate.toISOString().slice(0, 10)
 }
 
-function readAcceptPostResponsesSetting() {
-  if (typeof window === 'undefined') return false
-  return window.localStorage.getItem(POST_RESPONSE_SETTING_KEY) === 'true'
-}
-
 function makeInitialPostAnswers(researchId = '') {
   return {
     researchId,
@@ -268,7 +262,6 @@ function buildPostResponsePayload(answers, researchId) {
   const fields = sections.flatMap((section) => section.fields)
 
   return {
-    route: '/userstudy-Li',
     questionnaire: 'Post-Study Questionnaire',
     submittedAt,
     researchId: researchId || null,
@@ -280,18 +273,13 @@ function buildPostResponsePayload(answers, researchId) {
 }
 
 export default function PostStudyQuestionnaire({ researchId, conditionOrder, onComplete, onSave }) {
-  const [acceptPostResponses, setAcceptPostResponses] = useState(readAcceptPostResponsesSetting)
-  const [postAnswers, setPostAnswers] = useState(() => ({
+  const acceptPostResponses = true
+  const [postAnswers, setPostAnswers] = useState(() => (readQuestionnaireDraft(researchId, 'post-study')?.rawAnswers ?? {
     ...makeInitialPostAnswers(researchId),
     ...(conditionOrder ? { conditionOrder } : {}),
   }))
   const [postSavedMessage, setPostSavedMessage] = useState('')
-
-  function updateAcceptPostResponses(checked) {
-    setAcceptPostResponses(checked)
-    window.localStorage.setItem(POST_RESPONSE_SETTING_KEY, checked ? 'true' : 'false')
-    setPostSavedMessage('')
-  }
+  useQuestionnaireAutosave({ researchId, questionnaireId: 'post-study', answers: postAnswers, buildPayload: buildPostResponsePayload, enabled: acceptPostResponses })
 
   function updatePostAnswer(id, value) {
     setPostAnswers((current) => ({ ...current, [id]: value }))
@@ -304,7 +292,7 @@ export default function PostStudyQuestionnaire({ researchId, conditionOrder, onC
 
     const payload = buildPostResponsePayload(postAnswers, researchId)
     onSave(payload, 'post-study', POST_RESPONSE_BACKUP_KEY)
-    setPostSavedMessage('Response saved as a JSON file. A browser backup was also stored locally.')
+    setPostSavedMessage('Answers saved.')
     onComplete()
   }
 
@@ -318,13 +306,6 @@ export default function PostStudyQuestionnaire({ researchId, conditionOrder, onC
             across the whole study.
           </p>
         </div>
-        <label className="user-study-li-collection-toggle">
-          <span>
-            <strong>Accept responses</strong>
-            <small>{acceptPostResponses ? 'JSON saving is on' : 'Students can skip this form'}</small>
-          </span>
-          <Switch checked={acceptPostResponses} onCheckedChange={updateAcceptPostResponses} />
-        </label>
       </header>
 
       <form className="user-study-li-questionnaire" onSubmit={submitPostQuestionnaire}>
@@ -446,15 +427,12 @@ export default function PostStudyQuestionnaire({ researchId, conditionOrder, onC
         ))}
 
         <footer className="user-study-li-actions">
-          <button className="user-study-li-secondary-action" type="button" onClick={onComplete}>
-            Skip questionnaire
-          </button>
           <button
             className="user-study-li-primary-action"
             type="submit"
             disabled={!acceptPostResponses}
           >
-            Save JSON and finish
+            Submit session
           </button>
         </footer>
         {postSavedMessage ? <p className="user-study-li-save-message">{postSavedMessage}</p> : null}

@@ -114,6 +114,8 @@ export default function BlocksCanvas({
 
   const handleMakeBlock = useCallback(() => {
     if (!workspace) return
+    // Commit and close any floating Blockly field editor before showing the dialog.
+    Blockly.hideChaff()
     const topBlocks = workspace.getTopBlocks(false)
     const allBlocks = workspace.getAllBlocks(false)
 

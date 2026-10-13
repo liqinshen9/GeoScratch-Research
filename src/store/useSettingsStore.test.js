@@ -13,6 +13,7 @@ describe('useSettingsStore', () => {
   it('starts with the documented defaults', () => {
     const { settings } = useSettingsStore.getState()
     expect(settings.lineStyle).toBe(LINE_STYLES.PLAIN_TUBE)
+    expect(settings.userStudyMode).toBe(false)
     expect(settings.lineCollisionStyle).toBe(LINE_COLLISION_STYLES.DASHED)
     expect(settings.showLabels).toBe(true)
     expect(settings.haloEnabled).toBe(true)
@@ -197,5 +198,16 @@ describe('theme and main settings persistence', () => {
       showGrid: true,
       haloEnabled: true,
     })
+  })
+
+  it('persists user study mode across reloads and resets it to development mode', async () => {
+    const { default: store } = await import('./useSettingsStore')
+    store.getState().updateSetting('userStudyMode', true)
+    expect(JSON.parse(storage.get('geoscratch:user-settings')).userStudyMode).toBe(true)
+    vi.resetModules()
+    const { default: restored } = await import('./useSettingsStore')
+    expect(restored.getState().settings.userStudyMode).toBe(true)
+    restored.getState().resetSettings()
+    expect(restored.getState().settings.userStudyMode).toBe(false)
   })
 })

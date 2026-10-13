@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Switch } from '@/components/ui/switch'
+import { readQuestionnaireDraft, useQuestionnaireAutosave } from '@/study/session/questionnaireDrafts'
 
-const RESPONSE_SETTING_KEY = 'userstudyLi.acceptResponses'
 export const DEMOGRAPHICS_RESPONSE_BACKUP_KEY = 'userstudyLi.demographicsResponses'
 
 const QUESTIONNAIRE_SECTIONS = [
@@ -170,11 +169,6 @@ function todayForDateInput() {
   return offsetDate.toISOString().slice(0, 10)
 }
 
-function readAcceptResponsesSetting() {
-  if (typeof window === 'undefined') return false
-  return window.localStorage.getItem(RESPONSE_SETTING_KEY) === 'true'
-}
-
 function makeInitialAnswers(researchId = '') {
   return {
     researchId,
@@ -192,7 +186,6 @@ function buildResponsePayload(answers, researchId) {
   }))
 
   return {
-    route: '/userstudy-Li',
     questionnaire: 'Pre-Study Questionnaire (Demographics)',
     submittedAt,
     researchId: researchId || null,
@@ -203,15 +196,10 @@ function buildResponsePayload(answers, researchId) {
 }
 
 export default function DemographicsQuestionnaire({ researchId, onComplete, onSave }) {
-  const [acceptResponses, setAcceptResponses] = useState(readAcceptResponsesSetting)
-  const [answers, setAnswers] = useState(() => makeInitialAnswers(researchId))
+  const acceptResponses = true
+  const [answers, setAnswers] = useState(() => readQuestionnaireDraft(researchId, 'demographics')?.rawAnswers ?? makeInitialAnswers(researchId))
   const [savedMessage, setSavedMessage] = useState('')
-
-  function updateAcceptResponses(checked) {
-    setAcceptResponses(checked)
-    window.localStorage.setItem(RESPONSE_SETTING_KEY, checked ? 'true' : 'false')
-    setSavedMessage('')
-  }
+  useQuestionnaireAutosave({ researchId, questionnaireId: 'demographics', answers, buildPayload: buildResponsePayload, enabled: acceptResponses })
 
   function updateAnswer(id, value) {
     setAnswers((current) => ({ ...current, [id]: value }))
@@ -224,7 +212,7 @@ export default function DemographicsQuestionnaire({ researchId, onComplete, onSa
 
     const payload = buildResponsePayload(answers, researchId)
     onSave(payload, 'demographics', DEMOGRAPHICS_RESPONSE_BACKUP_KEY)
-    setSavedMessage('Response saved as a JSON file. A browser backup was also stored locally.')
+    setSavedMessage('Answers saved.')
     onComplete()
   }
 
@@ -234,13 +222,6 @@ export default function DemographicsQuestionnaire({ researchId, onComplete, onSa
         <div>
           <h1>Demographics Questionnaire</h1>
         </div>
-        <label className="user-study-li-collection-toggle">
-          <span>
-            <strong>Accept responses</strong>
-            <small>{acceptResponses ? 'JSON saving is on' : 'Students can skip this form'}</small>
-          </span>
-          <Switch checked={acceptResponses} onCheckedChange={updateAcceptResponses} />
-        </label>
       </header>
 
       <form className="user-study-li-questionnaire" onSubmit={submitQuestionnaire}>
@@ -299,11 +280,8 @@ export default function DemographicsQuestionnaire({ researchId, onComplete, onSa
         </section>
 
         <footer className="user-study-li-actions">
-          <button className="user-study-li-secondary-action" type="button" onClick={onComplete}>
-            Skip questionnaire
-          </button>
-          <button className="user-study-li-primary-action" type="submit" disabled={!acceptResponses}>
-            Save JSON and start
+          <button className="user-study-li-primary-action" type="submit">
+            Next
           </button>
         </footer>
         {savedMessage ? <p className="user-study-li-save-message">{savedMessage}</p> : null}

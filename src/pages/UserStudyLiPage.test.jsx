@@ -3,6 +3,8 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UserStudyLiPage from './UserStudyLiPage'
+import useSettingsStore from '@/store/useSettingsStore'
+import { strFromU8, unzipSync } from 'fflate'
 
 vi.mock('@/hooks/useThemeSync', () => ({ default: () => {} }))
 vi.mock('@/store/useWorkspaceStore', () => ({ default: { getState: () => ({ setUserBlockScope: () => {} }) } }))
@@ -45,6 +47,9 @@ function finishLectureSlides() {
 describe('Li study routes', () => {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
+    useSettingsStore.getState().resetSettings()
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:study-data'), revokeObjectURL: vi.fn() })
+    vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
@@ -108,7 +113,7 @@ describe('Li study routes', () => {
     expect(host.querySelector('h1').textContent).toBe('Exercise 2: Calculate the shortest distance from a point to a plane')
   })
 
-  it('saves lecture submissions with the session ID and offers a JSON download after the study', () => {
+  it('saves lecture submissions with the session ID and exports answers with their interaction timeline', async () => {
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
     const textarea = host.querySelector('textarea')
     const answer = 'Translate (1, 1, 1), rotate Y 90°, translate (-1, -1, -1).'
@@ -145,12 +150,100 @@ describe('Li study routes', () => {
     finishGeoScratch()
     click('GeoScratch Exercise questionnaire Second')
     click('Post-study Lecture slides first')
-    const createObjectURL = vi.fn(() => 'blob:lecture-answers')
+    const createObjectURL = vi.fn(() => 'blob:study-archive')
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() })
-    const download = vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
-    click('Download lecture answers (JSON)')
+    const download = vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => {}).mockClear()
+    click('Download study data (ZIP)')
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
     expect(download).toHaveBeenCalledOnce()
-    expect(download.mock.instances[0].download).toContain('lecture-answers')
+    expect(download.mock.instances[0].download).toBe(`${window.localStorage.getItem('userstudyLi.currentResearchId')}.zip`)
+    const zipBytes = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(new Uint8Array(reader.result))
+      reader.onerror = reject
+      reader.readAsArrayBuffer(createObjectURL.mock.calls[0][0])
+    })
+    const extracted = unzipSync(zipBytes)
+    expect(Object.keys(extracted)).toHaveLength(9)
+    const files = Object.values(extracted).map((bytes) => JSON.parse(strFromU8(bytes)))
+    expect(files).toHaveLength(9)
+    const lecture = files.filter((file) => file.type === 'exercise-answers')
+    expect(lecture.map((file) => file.submissions.length)).toEqual([3, 1])
+    expect(lecture[0].submissions.map((item) => item.answer)).toEqual([answer, answer, 'Revised answer: rotate about the origin.'])
+    expect(files.filter((file) => file.type === 'exercise-tracking').flatMap((file) => file.events).some((event) => event.type === 'click')).toBe(true)
+  })
+
+  it('records lecture start, submission latency, and completion duration independently for both exercises', () => {
+    let now = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    const researchId = window.localStorage.getItem('userstudyLi.currentResearchId')
+    const readTiming = () => JSON.parse(window.localStorage.getItem(`userstudyLi.lectureExerciseTiming.${researchId}`))
+    expect(readTiming()[0]).toMatchObject({ exerciseId: 'cube-point-pivot-rotation', completedAt: null, durationMs: null })
+    expect(Number.isNaN(Date.parse(readTiming()[0].startedAt))).toBe(false)
+    const textarea = host.querySelector('textarea')
+    act(() => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'My answer')
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    now += 5000
+    click('Submit')
+    now += 4000
+    click('Submit')
+    now += 1000
+    click('Next')
+    expect(readTiming()[0].durationMs).toBe(10000)
+    expect(readTiming()[0].completedAt).toBeTruthy()
+    expect(readTiming()[1]).toMatchObject({ exerciseId: 'point-plane-distance', durationMs: null })
+    now += 2000
+    act(() => host.querySelector('input[value="distance"]').click())
+    click('Submit')
+    now += 3000
+    click('Continue to questionnaire')
+    expect(readTiming()[1].durationMs).toBe(5000)
+    expect(JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses')).map((item) => item.elapsedMs)).toEqual([5000, 9000, 2000])
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    click('Post-study Lecture slides first')
+    const archive = JSON.parse(window.localStorage.getItem(`userstudyLi.sessionExport.${researchId}`))
+    const exercises = archive.files.filter((file) => file.data.type === 'exercise-answers')
+    expect(exercises.map((file) => file.data.durationMs)).toEqual([10000, 5000])
+    expect(exercises[0].data.submissions.map((item) => item.elapsedMs)).toEqual([5000, 9000])
+  })
+
+  it('automatically exports the completed session once, including unsubmitted questionnaire drafts', () => {
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    const researchId = window.localStorage.getItem('userstudyLi.currentResearchId')
+    window.localStorage.setItem(`userstudyLi.questionnaireDrafts.${researchId}.demographics`, JSON.stringify({
+      researchId, questionnaireId: 'demographics', status: 'not-submitted', answers: { gender: 'Prefer not to say' }, submittedAt: null,
+    }))
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    finishLectureSlides()
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    click('Post-study Lecture slides first')
+    expect(URL.createObjectURL).toHaveBeenCalledOnce()
+    const saved = JSON.parse(window.localStorage.getItem(`userstudyLi.sessionExport.${researchId}`))
+    expect(saved.files[0].data).toMatchObject({ status: 'not-submitted', responses: [{ id: 'gender', answer: 'Prefer not to say' }] })
+    expect(saved.files).toHaveLength(9)
+    act(() => root.render(<UserStudyLiPage />))
+    expect(URL.createObjectURL).toHaveBeenCalledOnce()
+  })
+
+  it('does not automatically download JSON with user study mode off but keeps manual export', () => {
+    expect(useSettingsStore.getState().settings.userStudyMode).toBe(false)
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    finishLectureSlides()
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    click('Post-study Lecture slides first')
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    expect(window.localStorage.getItem(`userstudyLi.sessionExport.${window.localStorage.getItem('userstudyLi.currentResearchId')}`)).toBeTruthy()
+    click('Download study data (ZIP)')
+    expect(URL.createObjectURL).toHaveBeenCalledOnce()
   })
 })

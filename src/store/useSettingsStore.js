@@ -7,6 +7,7 @@ import { THEMES, DEFAULT_THEME, resolveTheme, THEME_STORAGE_KEY } from './themeC
 
 // Extract defaults so you only have to maintain them in one place
 export const DEFAULT_SETTINGS = {
+  userStudyMode: false,
   theme: DEFAULT_THEME,
   lineStyle: LINE_STYLES.PLAIN_TUBE,
   lineCollisionStyle: LINE_COLLISION_STYLES.DASHED,

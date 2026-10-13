@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Switch } from '@/components/ui/switch'
+import { readQuestionnaireDraft, useQuestionnaireAutosave } from '@/study/session/questionnaireDrafts'
 
-const CONDITION_RESPONSE_SETTING_KEY = 'userstudyLi.acceptConditionResponses'
 export const CONDITION_RESPONSE_BACKUP_KEY = 'userstudyLi.conditionResponses'
 const LIKERT_OPTIONS = ['1', '2', '3', '4', '5']
 
@@ -117,11 +116,6 @@ function todayForDateInput() {
   return offsetDate.toISOString().slice(0, 10)
 }
 
-function readAcceptConditionResponsesSetting() {
-  if (typeof window === 'undefined') return false
-  return window.localStorage.getItem(CONDITION_RESPONSE_SETTING_KEY) === 'true'
-}
-
 function makeInitialConditionAnswers(researchId = '') {
   return {
     researchId,
@@ -149,7 +143,6 @@ function buildConditionResponsePayload(answers, researchId) {
   const fields = [...metaFields, ...ratingFields, ...openFields]
 
   return {
-    route: '/userstudy-Li',
     questionnaire: 'Condition Questionnaire',
     submittedAt,
     researchId: researchId || null,
@@ -162,22 +155,16 @@ function buildConditionResponsePayload(answers, researchId) {
 }
 
 export default function ConditionQuestionnaire({ researchId, condition, conditionOrder, onComplete, onSave }) {
-  const [acceptConditionResponses, setAcceptConditionResponses] = useState(
-    readAcceptConditionResponsesSetting,
-  )
+  const questionnaireId = condition === 'Lecture slides' ? 'condition-lecture' : 'condition-geoscratch'
+  const acceptConditionResponses = true
   const [conditionAnswers, setConditionAnswers] = useState(() =>
-    ({ ...makeInitialConditionAnswers(researchId),
+    (readQuestionnaireDraft(researchId, questionnaireId)?.rawAnswers ?? { ...makeInitialConditionAnswers(researchId),
       ...(condition ? { condition } : {}),
       ...(conditionOrder ? { conditionOrder } : {}),
     }),
   )
   const [conditionSavedMessage, setConditionSavedMessage] = useState('')
-
-  function updateAcceptConditionResponses(checked) {
-    setAcceptConditionResponses(checked)
-    window.localStorage.setItem(CONDITION_RESPONSE_SETTING_KEY, checked ? 'true' : 'false')
-    setConditionSavedMessage('')
-  }
+  useQuestionnaireAutosave({ researchId, questionnaireId, answers: conditionAnswers, buildPayload: buildConditionResponsePayload, enabled: acceptConditionResponses })
 
   function updateConditionAnswer(id, value) {
     setConditionAnswers((current) => ({ ...current, [id]: value }))
@@ -190,7 +177,7 @@ export default function ConditionQuestionnaire({ researchId, condition, conditio
 
     const payload = buildConditionResponsePayload(conditionAnswers, researchId)
     onSave(payload, 'condition', CONDITION_RESPONSE_BACKUP_KEY)
-    setConditionSavedMessage('Response saved as a JSON file. A browser backup was also stored locally.')
+    setConditionSavedMessage('Answers saved.')
     onComplete()
   }
 
@@ -203,18 +190,6 @@ export default function ConditionQuestionnaire({ researchId, condition, conditio
             Complete this after each condition. Answer only about the condition you just completed.
           </p>
         </div>
-        <label className="user-study-li-collection-toggle">
-          <span>
-            <strong>Accept responses</strong>
-            <small>
-              {acceptConditionResponses ? 'JSON saving is on' : 'Students can skip this form'}
-            </small>
-          </span>
-          <Switch
-            checked={acceptConditionResponses}
-            onCheckedChange={updateAcceptConditionResponses}
-          />
-        </label>
       </header>
 
       <form className="user-study-li-questionnaire" onSubmit={submitConditionQuestionnaire}>
@@ -303,15 +278,11 @@ export default function ConditionQuestionnaire({ researchId, condition, conditio
         </section>
 
         <footer className="user-study-li-actions">
-          <button className="user-study-li-secondary-action" type="button" onClick={onComplete}>
-            Skip questionnaire
-          </button>
           <button
             className="user-study-li-primary-action"
             type="submit"
-            disabled={!acceptConditionResponses}
           >
-            Save JSON and finish
+            Next
           </button>
         </footer>
         {conditionSavedMessage ? (

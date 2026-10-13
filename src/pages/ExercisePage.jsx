@@ -164,6 +164,13 @@ export default function ExercisePage({
   // Perceptual exercises have no checker pass -- a correct MCQ pick is the pass.
   const isPerceptual = exercise.kind === 'perceptual'
   const passed = result.passed || (isPerceptual && perceptualPicked === exercise.mcq?.correctId)
+  const studyEvaluation = JSON.stringify({ exerciseId: activeExercise, passed: Boolean(passed),
+    correct: Boolean(result.correct), incorrect: Boolean(result.incorrect), steps: result.steps ?? null })
+  useEffect(() => {
+    if (workspaceId?.startsWith('userstudy-Li-')) {
+      window.dispatchEvent(new CustomEvent('geoscratch:exercise-evaluation', { detail: JSON.parse(studyEvaluation) }))
+    }
+  }, [workspaceId, studyEvaluation])
 
   // Mirror the solve state into localStorage so the exercise browser shows
   // progress. A pass records it. It comes back off once we've seen this

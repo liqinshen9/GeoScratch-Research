@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import LectureCubeRotation from './LectureCubeRotation'
 
 const ANSWER_CHOICES = [
@@ -9,18 +9,25 @@ const ANSWER_CHOICES = [
   { id: 'divide-squared-normal', label: '17 / 3' },
 ]
 
-export default function LectureSlides({ onComplete, onSubmitAnswer }) {
+export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseChange, onExerciseFinish, trackingError }) {
   const [exercise, setExercise] = useState(1)
   const [selectedAnswer, setSelectedAnswer] = useState('')
   const [submittedAnswer, setSubmittedAnswer] = useState('')
+  useEffect(() => {
+    onExerciseChange?.(exercise === 1 ? 'cube-point-pivot-rotation' : 'point-plane-distance')
+  }, [exercise, onExerciseChange])
 
   if (exercise === 1) {
     return <div key="cube" className="user-study-li-form-page user-study-li-lecture-page user-study-li-lecture-cube-page">
       <main className="user-study-li-lecture-content">
+        {trackingError && <p role="alert">{trackingError}</p>}
         <LectureCubeRotation onSubmitAnswer={onSubmitAnswer} />
       </main>
       <footer className="user-study-li-lecture-footer">
-        <button type="button" className="user-study-li-primary-action" onClick={() => setExercise(2)}>
+        <button type="button" className="user-study-li-primary-action" onClick={() => {
+          onExerciseFinish?.('cube-point-pivot-rotation')
+          setExercise(2)
+        }}>
           Next
         </button>
       </footer>
@@ -29,6 +36,7 @@ export default function LectureSlides({ onComplete, onSubmitAnswer }) {
 
   return <div key="distance" className="user-study-li-form-page user-study-li-lecture-page">
     <main className="user-study-li-lecture-content">
+      {trackingError && <p role="alert">{trackingError}</p>}
       <h1 id="lecture-point-plane-title">Exercise 2: Calculate the shortest distance from a point to a plane</h1>
       <section className="user-study-li-lecture-slides" aria-label="Plane definition and distance lecture slides">
         <figure>
@@ -104,7 +112,10 @@ export default function LectureSlides({ onComplete, onSubmitAnswer }) {
       </section>
     </main>
     <footer className="user-study-li-lecture-footer">
-      <button type="button" className="user-study-li-primary-action" onClick={onComplete}>
+      <button type="button" className="user-study-li-primary-action" onClick={() => {
+        onExerciseFinish?.('point-plane-distance')
+        onComplete()
+      }}>
         Continue to questionnaire
       </button>
     </footer>

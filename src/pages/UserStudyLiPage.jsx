@@ -1,8 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
+import useSettingsStore from '@/store/useSettingsStore'
 import useThemeSync from '@/hooks/useThemeSync'
 import ExercisePage from '@/pages/ExercisePage'
 import { generateResearchId } from '@/study/session/researchId'
+import useStudyInteractionTracking from '@/study/session/useStudyInteractionTracking'
+import { markQuestionnaireSubmitted, readSessionQuestionnaires } from '@/study/session/questionnaireDrafts'
+import { buildSessionFiles, downloadSessionZip } from '@/study/session/sessionExport'
+import useLectureExerciseTiming from '@/study/session/useLectureExerciseTiming'
 import DemographicsQuestionnaire from './userStudyLi/DemographicsQuestionnaire'
 import ConditionQuestionnaire from './userStudyLi/ConditionQuestionnaire'
 import PostStudyQuestionnaire from './userStudyLi/PostStudyQuestionnaire'
@@ -49,28 +54,10 @@ const SETTINGS = Object.freeze({
   labelDetail: 'nameAndValue',
 })
 
-function safeFileSegment(value) {
-  return value.trim().replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '') || 'anonymous'
-}
-
-function downloadJson(payload, type = 'demographics') {
-  const fileName = `userstudy-Li-${type}-${safeFileSegment(
-    payload.researchId || '',
-  )}-${payload.submittedAt.replace(/[:.]/g, '-')}.json`
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = fileName
-  anchor.click()
-  URL.revokeObjectURL(url)
-}
-
 function saveQuestionnairePayload(payload, type, backupKey) {
   const storedResponses = JSON.parse(window.localStorage.getItem(backupKey) || '[]')
-  storedResponses.push(payload)
+  storedResponses.push({ ...payload, responseType: type })
   window.localStorage.setItem(backupKey, JSON.stringify(storedResponses))
-  downloadJson(payload, type)
 }
 
 function styleStudyPoints(objects) {
@@ -110,14 +97,55 @@ function styleStudyPoints(objects) {
 
 export default function UserStudyLiPage() {
   useThemeSync()
+  const userStudyMode = useSettingsStore((state) => state.settings.userStudyMode)
   const [exerciseIndex, setExerciseIndex] = useState(0)
   const [phase, setPhase] = useState('new')
   const [studyOrder, setStudyOrder] = useState(null)
   const [researchId, setResearchId] = useState('')
   const [tutorialPhase, setTutorialPhase] = useState('welcome')
   const [lectureResponses, setLectureResponses] = useState([])
+  const [lectureExerciseId, setLectureExerciseId] = useState('cube-point-pivot-rotation')
+  const { start: startLectureTiming, finish: finishLectureTiming, elapsed: lectureElapsed, read: readLectureTimings } = useLectureExerciseTiming(researchId)
+  const startLectureExercise = useCallback((exerciseId) => {
+    startLectureTiming(exerciseId)
+    setLectureExerciseId(exerciseId)
+  }, [startLectureTiming])
+  const [exportError, setExportError] = useState('')
+  const automaticallyExportedSession = useRef(null)
   const exercise = STUDY_EXERCISES[exerciseIndex]
   const exerciseId = exercise.id
+  const interactionTracking = useStudyInteractionTracking(researchId, {
+    phase, studyOrder,
+    conditionId: phase.startsWith('lecture') ? 'lecture' : phase.startsWith('geoscratch') ? 'geoscratch' : null,
+    exerciseId: phase === 'lecture' ? lectureExerciseId : phase === 'geoscratch'
+      ? tutorialPhase === 'done' ? exerciseId : 'tutorial' : null,
+  })
+
+  function sessionPayload() {
+    return {
+      researchId, studyOrder, submittedAt: new Date().toISOString(),
+      questionnaires: readSessionQuestionnaires(researchId),
+      lectureExerciseResponses: lectureResponses,
+      lectureExerciseTimings: readLectureTimings(),
+      interactionLog: interactionTracking.read(),
+    }
+  }
+
+  useEffect(() => {
+    if (phase !== 'complete' || automaticallyExportedSession.current === researchId) return
+    automaticallyExportedSession.current = researchId
+    const payload = {
+      researchId, studyOrder, submittedAt: new Date().toISOString(),
+      questionnaires: readSessionQuestionnaires(researchId),
+      lectureExerciseResponses: lectureResponses, lectureExerciseTimings: readLectureTimings(), interactionLog: interactionTracking.read(),
+    }
+    try {
+      window.localStorage.setItem(`userstudyLi.sessionExport.${researchId}`, JSON.stringify(buildSessionFiles(payload)))
+      if (userStudyMode) downloadSessionZip(payload)
+    } catch {
+      setExportError('The automatic export could not finish. Use Download study data (ZIP) to save a copy.')
+    }
+  }, [phase, researchId, studyOrder, lectureResponses, interactionTracking, userStudyMode, readLectureTimings])
 
   useEffect(() => {
     useWorkspaceStore.getState().setUserBlockScope(researchId ? `userstudy-Li-${researchId}` : null)
@@ -132,6 +160,8 @@ export default function UserStudyLiPage() {
     setTutorialPhase('welcome')
     setStudyOrder(null)
     setLectureResponses([])
+    setLectureExerciseId('cube-point-pivot-rotation')
+    setExportError('')
     setPhase('demographics')
     window.localStorage.setItem(CURRENT_RESEARCH_ID_KEY, nextResearchId)
   }
@@ -141,10 +171,20 @@ export default function UserStudyLiPage() {
   }
 
   function saveLectureAnswer(response) {
-    const record = { ...response, researchId, studyOrder, conditionId: 'lecture' }
+    const record = { ...response, elapsedMs: lectureElapsed(response.exerciseId), researchId, studyOrder, conditionId: 'lecture' }
     const storedResponses = JSON.parse(window.localStorage.getItem(LECTURE_RESPONSES_KEY) || '[]')
     window.localStorage.setItem(LECTURE_RESPONSES_KEY, JSON.stringify([...storedResponses, record]))
     setLectureResponses((responses) => [...responses, record])
+    interactionTracking.record('answer_submit', { submission: record })
+    interactionTracking.read()
+  }
+
+  function saveStudyQuestionnaire(payload, type, backupKey) {
+    const questionnaireId = phase === 'demographics' ? 'demographics' : phase === 'post'
+      ? 'post-study' : phase === 'lecture-questionnaire' ? 'condition-lecture' : 'condition-geoscratch'
+    markQuestionnaireSubmitted(researchId, questionnaireId, payload)
+    interactionTracking.record('questionnaire_submit', { questionnaireType: type })
+    saveQuestionnairePayload({ ...payload, interactionLog: interactionTracking.read() }, type, backupKey)
   }
 
   if (phase === 'new') {
@@ -169,7 +209,7 @@ export default function UserStudyLiPage() {
       <DemographicsQuestionnaire
         researchId={researchId}
         onComplete={() => setPhase('order')}
-        onSave={saveQuestionnairePayload}
+        onSave={saveStudyQuestionnaire}
       />
     )
   }
@@ -182,7 +222,8 @@ export default function UserStudyLiPage() {
   }
 
   if (phase === 'lecture') {
-    return <LectureSlides onComplete={advanceCondition} onSubmitAnswer={saveLectureAnswer} />
+    return <LectureSlides onComplete={advanceCondition} onSubmitAnswer={saveLectureAnswer} onExerciseChange={startLectureExercise}
+      onExerciseFinish={finishLectureTiming} trackingError={interactionTracking.storageError} />
   }
 
   if (phase === 'geoscratch-questionnaire' || phase === 'lecture-questionnaire') {
@@ -195,7 +236,7 @@ export default function UserStudyLiPage() {
         condition={details.condition}
         conditionOrder={details.conditionOrder}
         onComplete={advanceCondition}
-        onSave={(payload, type, backupKey) => saveQuestionnairePayload(
+        onSave={(payload, type, backupKey) => saveStudyQuestionnaire(
           { ...payload, studyOrder, conditionId: condition,
             ...(condition === 'lecture' ? { lectureExerciseResponses: lectureResponses } : {}),
           }, type, backupKey,
@@ -210,7 +251,7 @@ export default function UserStudyLiPage() {
         researchId={researchId}
         conditionOrder={conditionDetails(studyOrder, 'geoscratch').studyOrder}
         onComplete={advanceCondition}
-        onSave={(payload, type, backupKey) => saveQuestionnairePayload(
+        onSave={(payload, type, backupKey) => saveStudyQuestionnaire(
           { ...payload, studyOrder, lectureExerciseResponses: lectureResponses }, type, backupKey,
         )}
       />
@@ -223,12 +264,13 @@ export default function UserStudyLiPage() {
         <section className="user-study-li-session-card" aria-labelledby="session-complete-title">
           <h1 id="session-complete-title">Study session complete</h1>
           <p>Research ID: {researchId}</p>
+          <p>The study ZIP contains a folder named by your research ID, with separate JSON files in study order. {userStudyMode
+            ? 'If the automatic download did not appear, use the button below.'
+            : 'Automatic downloads are off. Use the button below to download a copy.'}</p>
+          {exportError && <p role="alert">{exportError}</p>}
+          {interactionTracking.storageError && <p role="alert">{interactionTracking.storageError}</p>}
           <footer className="user-study-li-session-footer">
-            {lectureResponses.length > 0 && <button
-              className="user-study-li-primary-action"
-              type="button"
-              onClick={() => downloadJson({ researchId, studyOrder, submittedAt: new Date().toISOString(), lectureExerciseResponses: lectureResponses }, 'lecture-answers')}
-            >Download lecture answers (JSON)</button>}
+            <button className="user-study-li-primary-action" type="button" onClick={() => downloadSessionZip(sessionPayload())}>Download study data (ZIP)</button>
             <button
               className="user-study-li-new-session-action"
               type="button"
@@ -251,6 +293,7 @@ export default function UserStudyLiPage() {
       {tutorialPhase === 'welcome' && exerciseIndex === 0 && <TutorialWelcome
         onFollow={() => setTutorialPhase('active')} onSkip={() => setTutorialPhase('done')} />}
       <main className="flex min-h-0 flex-1 flex-col">
+        {interactionTracking.storageError && <p role="alert">{interactionTracking.storageError}</p>}
         <ExercisePage
           key={exerciseId}
           exerciseId={exerciseId}
