@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owns(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function researcher() {
+      return request.auth != null
+        && ((exists(/databases/$(database)/documents/studyResearchers/$(request.auth.uid))
+          && get(/databases/$(database)/documents/studyResearchers/$(request.auth.uid)).data.enabled == true)
+          || ('email' in request.auth.token && request.auth.token.email_verified == true
+            && exists(/databases/$(database)/documents/studyResearcherEmails/$(request.auth.token.email))
+            && get(/databases/$(database)/documents/studyResearcherEmails/$(request.auth.token.email)).data.enabled == true));
+    }
+    match /studyResearchers/{uid} {
+      allow read: if owns(uid);
+    }
+    match /studyResearcherEmails/{email} {
+      allow read: if request.auth != null && 'email' in request.auth.token
+        && request.auth.token.email_verified == true && request.auth.token.email == email;
+    }
+    match /{path=**}/sessions/{sessionId} {
+      allow read: if researcher();
+    }
+    match /studyParticipants/{uid}/sessions/{sessionId} {
+      allow read: if owns(uid) || researcher();
+      allow create: if owns(uid)
+        && request.resource.data.keys().hasOnly(['researchId', 'studyOrder', 'schemaVersion', 'createdAt'])
+        && request.resource.data.researchId is string
+        && request.resource.data.researchId.size() > 0
+        && request.resource.data.researchId.size() <= 100
+        && (request.resource.data.studyOrder == null || request.resource.data.studyOrder in ['lecture-first', 'geoscratch-first'])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.createdAt == request.time;
+      allow update: if owns(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['studyOrder'])
+        && (resource.data.studyOrder == null || resource.data.studyOrder == request.resource.data.studyOrder)
+        && request.resource.data.studyOrder in ['lecture-first', 'geoscratch-first'];
+      match /records/{stageId} {
+        allow read: if owns(uid) || researcher();
+        allow create, update: if owns(uid)
+          && exists(/databases/$(database)/documents/studyParticipants/$(uid)/sessions/$(sessionId))
+          && stageId in ['demographics', 'lecture-exercise-1', 'lecture-exercise-2',
+            'condition-1', 'geoscratch-trial', 'geoscratch-exercise-1',
+            'geoscratch-exercise-2', 'condition-2', 'post-study']
+          && request.resource.data.keys().hasOnly(['stageId', 'data', 'savedAt'])
+          && request.resource.data.stageId == stageId
+          && request.resource.data.data is map
+          && request.resource.data.savedAt == request.time;
+      }
+      match /recovery/{documentId} {
+        allow read: if owns(uid) || researcher();
+        allow create, update: if owns(uid) && documentId == 'current'
+          && exists(/databases/$(database)/documents/studyParticipants/$(uid)/sessions/$(sessionId))
+          && request.resource.data.keys().hasOnly(['snapshot', 'savedAt'])
+          && request.resource.data.snapshot is map
+          && request.resource.data.savedAt == request.time;
+      }
+    }
+  }
+}

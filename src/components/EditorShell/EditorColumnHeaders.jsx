@@ -4,6 +4,7 @@ import { FullScreenOne, OffScreenOne } from '@icon-park/react'
 
 export default function EditorColumnHeaders({
   leadingHeader,
+  sceneHeaderContent,
   workspace,
   workspaceMaximized,
   preserveColumns = false,
@@ -66,6 +67,7 @@ export default function EditorColumnHeaders({
 
       <header className="panel-column-header editor-head editor-head--last">
         <h2>3D View</h2>
+        {sceneHeaderContent}
       </header>
     </div>
   )

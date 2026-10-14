@@ -10,6 +10,7 @@ export const TUTORIAL_INSTRUCTIONS = [
   ]),
   { stage: 'replay' },
   { stage: 'labels' },
+  ...['myblocks', 'make', 'name', 'save'].map((stage) => ({ stage })),
   { stage: 'done' },
 ]
 

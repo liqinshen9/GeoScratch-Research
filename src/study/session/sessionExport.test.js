@@ -38,10 +38,11 @@ describe('ordered session archive', () => {
     expect(result.files[1].data.submissions.map((answer) => answer.attempt)).toEqual([1, 2])
     expect(result.files[1].data).toMatchObject({ startedAt: '2026-10-13T01:00:00.000Z', completedAt: '2026-10-13T01:03:00.000Z', durationMs: 180000 })
     expect(result.files[2].data).toMatchObject({ startedAt: null, completedAt: null, durationMs: null })
-    expect(result.files[4].data.events.map((event) => event.type)).toEqual(['screen_enter', 'click'])
-    expect(result.files[4].data.events[0].exerciseId).toBe('tutorial')
-    expect(result.files[4].data.events.map((event) => event.sequence)).toEqual([3, 4])
-    expect(result.files[4].data.events[1]).not.toHaveProperty('researchId')
+    expect(result.files[4].data).not.toHaveProperty('tutorialEvents')
+    for (const file of result.files.slice(4, 7)) {
+      expect(file.data).not.toHaveProperty('events')
+      expect(file.data).not.toHaveProperty('finalWorkspace')
+    }
   })
 
   it('switches file ordering and condition numbers for GeoScratch-first', () => {
@@ -53,6 +54,22 @@ describe('ordered session archive', () => {
     ])
     expect(result.files[5].data.conditionNumber).toBe(2)
   })
+  it('preserves a small tutorial completion summary without exporting historical tutorial logs', () => {
+    const archive = buildSessionFiles({ ...session, tutorialSummary: { status: 'completed', skipSource: null } })
+    expect(archive.files[4].data.tutorial).toEqual({ status: 'completed', skipSource: null })
+    expect(JSON.stringify(archive)).not.toContain('screen_enter')
+  })
+
+  it('excludes historical exercise snapshots from export without changing the stored records', () => {
+    const records = ['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'].map((exerciseId) => ({
+      phase: 'geoscratch', conditionId: 'geoscratch', exerciseId, type: 'workspace_snapshot',
+      snapshot: { largePrivateSnapshot: 'old saved workspace' }, occurredAt: '2026-10-13T01:05:00.000Z',
+    }))
+    const before = JSON.stringify(records)
+    const archive = buildSessionFiles({ ...session, interactionLog: [...session.interactionLog, ...records] })
+    expect(JSON.stringify(archive)).not.toContain('largePrivateSnapshot')
+    expect(JSON.stringify(records)).toBe(before)
+  })
 
   it('creates a readable ZIP preserving JSON contents and Unicode answers', () => {
     const { archive, bytes } = createSessionZip(session)
@@ -63,7 +80,7 @@ describe('ordered session archive', () => {
 
   it('rejects unspecified sessions and prevents folder path injection', () => {
     expect(() => buildSessionFiles({ ...session, researchId: '' })).toThrow()
-    expect(() => buildSessionFiles({ ...session, studyOrder: null })).toThrow()
+    expect(buildSessionFiles({ ...session, studyOrder: null }).files).toHaveLength(1)
     expect(buildSessionFiles({ ...session, researchId: '../outside' }).folder).toBe('---outside')
   })
 })

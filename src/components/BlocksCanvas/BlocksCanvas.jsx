@@ -21,6 +21,8 @@ import {
 import { useBlockSelectionSync } from '@/components/BlocksCanvas/hooks/useBlockSelectionSync'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
 import { canonicalizeWorkspaceXml, nameCompositeBlockXml } from '@/utils/blocklyXml'
+import { namedSavedWorkspaceXml } from './blocks/savedWorkspace'
+import { MY_BLOCK_SAVED_EVENT } from '@/utils/myBlockSavedEvent'
 import { emitStudyEvent, workspaceStudyContext } from '@/study/session/studyEvents'
 import './BlocksCanvas.css'
 
@@ -167,7 +169,7 @@ export default function BlocksCanvas({
         return
       }
 
-      addUserBlock({
+      const savedBlock = addUserBlock({
         name: trimmedName,
         xmlText: nameCompositeBlockXml(xmlText, trimmedName),
         source:
@@ -176,6 +178,9 @@ export default function BlocksCanvas({
       setCategoryId('mybox')
       setPaletteOpen(true)
       setMyBlockDialog(null)
+      if (savedBlock) window.dispatchEvent(new CustomEvent(MY_BLOCK_SAVED_EVENT, {
+        detail: { workspaceId: id, blockId: savedBlock.id },
+      }))
     },
     [workspace, reusableBlockTemplate, addUserBlock, id],
   )
@@ -188,7 +193,7 @@ export default function BlocksCanvas({
         .userBlocks.find((block) => block.id === blockId)
       if (!userBlock) return
       if (
-        addCompositeBlockToWorkspace(workspace, nameCompositeBlockXml(userBlock.xmlText, userBlock.name), {
+        addCompositeBlockToWorkspace(workspace, namedSavedWorkspaceXml(userBlock.xmlText, userBlock.name), {
           ...options,
           myBlockId: blockId,
         })

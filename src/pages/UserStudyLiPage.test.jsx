@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+vi.mock('@/study/firebase/studyFirebase', () => ({ createFirebaseStudySession: vi.fn(async () => ({ path: ['test'] })), saveFirebaseStudyRecord: vi.fn(async () => {}) }))
+vi.mock('@/study/firebase/useFirebaseStudySync', () => ({ default: () => ({ state: 'idle', count: 0 }) }))
+vi.mock('@/study/session/useStudyRecoveryBackup', () => ({ default: () => '' }))
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,10 +9,15 @@ import UserStudyLiPage from './UserStudyLiPage'
 import useSettingsStore from '@/store/useSettingsStore'
 import { strFromU8, unzipSync } from 'fflate'
 
+// Preserve coverage of the future persistent mode; current memory-only mode
+// and cleanup are covered separately in studyStorage.test.js.
+vi.mock('@/study/session/studyStorage', () => ({ STUDY_PERSISTENCE_ENABLED: true, clearStoredStudyData: () => {} }))
+
 vi.mock('@/hooks/useThemeSync', () => ({ default: () => {} }))
 vi.mock('@/store/useWorkspaceStore', () => ({ default: { getState: () => ({ setUserBlockScope: () => {} }) } }))
-vi.mock('@/pages/ExercisePage', () => ({ default: ({ exerciseId, onNextExercise }) =>
-  <button onClick={onNextExercise}>{exerciseId}</button> }))
+vi.mock('@/pages/ExercisePage', () => ({ default: ({ exerciseId, onNextExercise, onPreviousExercise, exerciseTimer }) =>
+  <>{exerciseTimer}<button onClick={onNextExercise}>{exerciseId}</button>
+    {onPreviousExercise && <button onClick={onPreviousExercise}>Previous exercise</button>}</> }))
 vi.mock('./userStudyLi/DemographicsQuestionnaire', () => ({ default: ({ onComplete }) =>
   <button onClick={onComplete}>Finish demographics</button> }))
 vi.mock('./userStudyLi/TutorialWelcome', () => ({ default: ({ onFollow, onSkip }) =>
@@ -53,7 +61,7 @@ describe('Li study routes', () => {
     host = document.createElement('div')
     document.body.append(host)
     root = createRoot(host)
-    act(() => root.render(<UserStudyLiPage />))
+    act(() => root.render(<UserStudyLiPage autoResume={false} />))
     click('Start new session')
     click('Finish demographics')
   })
@@ -64,6 +72,7 @@ describe('Li study routes', () => {
     delete globalThis.IS_REACT_ACT_ENVIRONMENT
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('completes GeoScratch then lecture slides with a questionnaire after each', () => {
@@ -76,6 +85,64 @@ describe('Li study routes', () => {
     expect(host.querySelector('h1').textContent).toBe('Study session complete')
     click('Start new session')
     expect(host.querySelector('h1').textContent).toBe('New study session')
+  })
+
+  it('times the three GeoScratch tasks at 5, 10, and 10 minutes and automatically advances to the questionnaire', () => {
+    vi.useFakeTimers()
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    click('Condition 1: GeoScratchGeoScratch → Lecture slides')
+    expect(host.querySelector('[role="timer"]')).toBeNull()
+    act(() => vi.advanceTimersByTime(600000))
+    expect(host.textContent).toContain('create-complex-object')
+    click('Skip tutorial')
+    expect(host.querySelector('[role="timer"]').textContent).toContain('5:00')
+    act(() => vi.advanceTimersByTime(300000))
+    expect(host.textContent).toContain('cube-point-pivot-rotation')
+    expect(host.querySelector('[role="alert"]').textContent).toContain('Time is up for Trial Exercise')
+    expect(host.querySelector('[role="timer"]').textContent).toContain('10:00')
+    act(() => vi.advanceTimersByTime(4999))
+    expect(host.querySelector('.user-study-li-time-up')).toBeTruthy()
+    act(() => vi.advanceTimersByTime(1))
+    expect(host.querySelector('.user-study-li-time-up')).toBeNull()
+    // The parent also guards Previous, even if called outside the disabled UI.
+    click('Previous exercise')
+    expect(host.textContent).toContain('cube-point-pivot-rotation')
+    act(() => vi.advanceTimersByTime(594000))
+    expect(host.textContent).toContain('cube-point-pivot-rotation')
+    act(() => vi.advanceTimersByTime(1000))
+    expect(host.textContent).toContain('point-plane-distance')
+    expect(host.querySelector('[role="timer"]').textContent).toContain('10:00')
+    act(() => vi.advanceTimersByTime(600000))
+    expect(host.textContent).toContain('GeoScratch Exercise questionnaire First')
+    expect(host.querySelector('[role="alert"]').textContent).toContain('Time is up for the point-to-plane distance exercise')
+    expect(host.querySelector('[role="timer"]')).toBeNull()
+    act(() => vi.advanceTimersByTime(5000))
+    expect(host.querySelector('.user-study-li-time-up')).toBeNull()
+  })
+
+  it('has no countdown and allows moving back when study mode is off', () => {
+    vi.useFakeTimers()
+    click('Condition 1: GeoScratchGeoScratch → Lecture slides')
+    click('Skip tutorial')
+    act(() => vi.advanceTimersByTime(1800000))
+    expect(host.textContent).toContain('create-complex-object')
+    expect(host.querySelector('[role="timer"]')).toBeNull()
+    click('create-complex-object')
+    click('Previous exercise')
+    expect(host.textContent).toContain('create-complex-object')
+  })
+
+  it('cancels the active countdown when study mode is switched off', () => {
+    vi.useFakeTimers()
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    click('Condition 1: GeoScratchGeoScratch → Lecture slides')
+    click('Skip tutorial')
+    act(() => vi.advanceTimersByTime(60000))
+    expect(host.querySelector('[role="timer"]').textContent).toContain('4:00')
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', false))
+    act(() => vi.advanceTimersByTime(600000))
+    expect(host.querySelector('[role="timer"]')).toBeNull()
+    expect(host.textContent).toContain('create-complex-object')
   })
 
   it('completes lecture slides then GeoScratch with a questionnaire after each', () => {
@@ -95,12 +162,12 @@ describe('Li study routes', () => {
     expect(submit.disabled).toBe(true)
     for (const answer of ['dot-product', 'none', 'on-plane', 'divide-squared-normal', 'distance']) {
       act(() => host.querySelector(`input[value="${answer}"]`).click())
-      expect(host.querySelector('[role="status"]')).toBeNull()
+      expect(host.querySelector('.user-study-li-lecture-content [role="status"]')).toBeNull()
       click('Submit')
-      const result = host.querySelector('[role="status"]')
+      const result = host.querySelector('.user-study-li-lecture-content [role="status"]')
       expect(result.textContent).toBe(answer === 'distance' ? '✓' : '✗')
       expect(result.closest('label').querySelector('input').value).toBe(answer)
-      expect(host.querySelectorAll('[role="status"]').length).toBe(1)
+      expect(host.querySelectorAll('.user-study-li-lecture-content [role="status"]').length).toBe(1)
     }
   })
 
@@ -108,7 +175,7 @@ describe('Li study routes', () => {
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
     expect(host.querySelector('textarea')).toBeTruthy()
     expect(host.querySelectorAll('input[type="radio"]')).toHaveLength(0)
-    expect(host.querySelector('[role="status"]')).toBeNull()
+    expect(host.querySelector('.user-study-li-lecture-content [role="status"]')).toBeNull()
     click('Next')
     expect(host.querySelector('h1').textContent).toBe('Exercise 2: Calculate the shortest distance from a point to a plane')
   })
@@ -122,7 +189,7 @@ describe('Li study routes', () => {
       textarea.dispatchEvent(new Event('input', { bubbles: true }))
     })
     click('Submit')
-    expect(host.querySelector('[role="status"]').textContent).toBe('Answer saved.')
+    expect(host.querySelector('.user-study-li-lecture-content [role="status"]').textContent).toBe('Answer saved.')
     let records = JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses'))
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({
@@ -170,7 +237,8 @@ describe('Li study routes', () => {
     const lecture = files.filter((file) => file.type === 'exercise-answers')
     expect(lecture.map((file) => file.submissions.length)).toEqual([3, 1])
     expect(lecture[0].submissions.map((item) => item.answer)).toEqual([answer, answer, 'Revised answer: rotate about the origin.'])
-    expect(files.filter((file) => file.type === 'exercise-tracking').flatMap((file) => file.events).some((event) => event.type === 'click')).toBe(true)
+    expect(files.filter((file) => file.type === 'exercise-tracking').every((file) => !file.events && !file.tutorialEvents && !file.finalWorkspace)).toBe(true)
+    expect(Object.keys(localStorage).some((key) => key.startsWith('userstudyLi.interactions.'))).toBe(false)
   })
 
   it('records lecture start, submission latency, and completion duration independently for both exercises', () => {
@@ -212,6 +280,44 @@ describe('Li study routes', () => {
     expect(exercises[0].data.submissions.map((item) => item.elapsedMs)).toEqual([5000, 9000])
   })
 
+  it('still reaches post-study and exports lecture answers and timings when browser storage is full', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Storage full', 'QuotaExceededError') })
+    let now = 1000
+    vi.spyOn(performance, 'now').mockImplementation(() => now)
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    const textarea = host.querySelector('textarea')
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'My saved-in-tab answer')
+      textarea.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    click('Submit')
+    now += 5000
+    click('Next')
+    act(() => host.querySelector('input[value="distance"]').click())
+    click('Submit')
+    now += 3000
+    click('Continue to questionnaire')
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    expect(host.textContent).toContain('Post-study Lecture slides first')
+    click('Post-study Lecture slides first')
+    expect(host.querySelector('h1').textContent).toBe('Study session complete')
+    click('Download study data (ZIP)')
+    const blob = URL.createObjectURL.mock.calls.at(-1)[0]
+    const bytes = await new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(new Uint8Array(reader.result))
+      reader.onerror = reject
+      reader.readAsArrayBuffer(blob)
+    })
+    const files = Object.values(unzipSync(bytes)).map((value) => JSON.parse(strFromU8(value)))
+    const lecture = files.filter((file) => file.type === 'exercise-answers')
+    expect(lecture[0].submissions[0].answer).toBe('My saved-in-tab answer')
+    expect(lecture[1].submissions[0].answer).toBe('distance')
+    expect(lecture.map((file) => file.durationMs)).toEqual([5000, 3000])
+  })
+
   it('automatically exports the completed session once, including unsubmitted questionnaire drafts', () => {
     act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
     const researchId = window.localStorage.getItem('userstudyLi.currentResearchId')
@@ -229,7 +335,7 @@ describe('Li study routes', () => {
     const saved = JSON.parse(window.localStorage.getItem(`userstudyLi.sessionExport.${researchId}`))
     expect(saved.files[0].data).toMatchObject({ status: 'not-submitted', responses: [{ id: 'gender', answer: 'Prefer not to say' }] })
     expect(saved.files).toHaveLength(9)
-    act(() => root.render(<UserStudyLiPage />))
+    act(() => root.render(<UserStudyLiPage autoResume={false} />))
     expect(URL.createObjectURL).toHaveBeenCalledOnce()
   })
 
@@ -282,9 +388,7 @@ describe('Li study routes', () => {
     const archive = JSON.parse(window.localStorage.getItem(`userstudyLi.sessionExport.${researchId}`))
     const trial = archive.files.find((file) => file.data.exerciseId === 'create-complex-object').data
     expect(trial.tutorial).toMatchObject({ status, skipSource })
-    const events = trial.events.filter((event) => event.type.startsWith('tutorial_'))
-    expect(events.map((event) => event.type)).toEqual(status === 'skipped' ? ['tutorial_skip']
-      : status === 'completed' ? ['tutorial_start', 'tutorial_complete'] : ['tutorial_start', 'tutorial_skip'])
-    expect(events.every((event) => Number.isFinite(Date.parse(event.occurredAt)))).toBe(true)
+    expect(trial).not.toHaveProperty('tutorialEvents')
+    expect(Object.keys(localStorage).some((key) => key.startsWith('userstudyLi.interactions.'))).toBe(false)
   })
 })

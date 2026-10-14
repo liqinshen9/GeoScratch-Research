@@ -1,5 +1,7 @@
 import THREE from '@/utils/three'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
+import FeedbackSteps from './shared/FeedbackSteps'
+import { distanceFeedback } from './shared/formativeFeedback'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { createVectorNotationRuntime } from '@/utils/vectorNotation'
 import { createPointMarker } from '@/utils/pointMarker'
@@ -475,28 +477,7 @@ function Givens() {
   )
 }
 
-function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed }) {
-  const [checkedSteps, setCheckedSteps] = useState({})
-  const pendingCheckRef = useRef(0)
-
-  useEffect(() => {
-    setCheckedSteps({})
-  }, [feedbackRevision])
-
-  useEffect(
-    () => () => {
-      window.clearTimeout(pendingCheckRef.current)
-    },
-    [],
-  )
-
-  const checkStep = (key) => {
-    window.clearTimeout(pendingCheckRef.current)
-    pendingCheckRef.current = window.setTimeout(() => {
-      setCheckedSteps((checked) => ({ ...checked, [key]: true }))
-    }, 100)
-  }
-
+function Steps(props) {
   const tasks = [
     ['plane', 'Create: a plane using point A = (-5, 0, 2) and normal n = (0.5, 1, 0.5).'],
     ['pointP', 'Create: Point P = (-9, 8, 7).'],
@@ -516,40 +497,7 @@ function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed 
     ],
   ]
 
-  return (
-    <ol className={`exercise-task-steps${passed ? ' is-passed' : ''}`}>
-      {tasks.map(([key, text]) => {
-        const wasChecked = checkedSteps[key]
-        const showValueFeedback = wasChecked && !steps[key] && partialSteps?.[key]
-        const showIncompleteFeedback = wasChecked && !steps[key] && !partialSteps?.[key]
-        return (
-          <li key={key} className={steps[key] ? 'is-complete' : wasChecked ? 'is-partial' : ''}>
-            <div className="exercise-step-row">
-              <span>{text}</span>
-              <button
-                type="button"
-                className="exercise-step-check"
-                data-complete={steps[key] ? 'true' : undefined}
-                onClick={() => checkStep(key)}
-              >
-                {steps[key] ? 'Complete' : 'Check'}
-              </button>
-            </div>
-            {showValueFeedback && (
-              <span className="exercise-step-feedback" role="status">
-                {partialMessages?.[key] || 'One of the values or connections is not correct yet.'}
-              </span>
-            )}
-            {showIncompleteFeedback && (
-              <span className="exercise-step-feedback" role="status">
-                This step is not complete yet.
-              </span>
-            )}
-          </li>
-        )
-      })}
-    </ol>
-  )
+  return <FeedbackSteps {...props} tasks={tasks} />
 }
 
 /** Reads the computed distance out of whichever block produced it. */
@@ -612,6 +560,16 @@ function evaluate({ objects, workspace }) {
       'Connect that projection into Vector Magnitude. The computed distance should be about 6.94.',
   }
 
+  const feedback = distanceFeedback({
+    workspace, steps, distance, expectedDistance: CORRECT_DISTANCE,
+    qPoint: findPointQObject(objects, workspace)?.userData?.point,
+    isPlane: isExercisePlaneBlock, isQ: isExercisePointQBlock, isP: isPointPBlock,
+    isNormal: isNormalVectorBlock, isDifference: isPointDifferenceBlock,
+    isProjection: (block) => block?.type === 'vector_project'
+      && isPointDifferenceBlock(getInputBlock(block, 'U'))
+      && isNormalVectorBlock(getInputBlock(block, 'V')),
+  })
+
   return {
     passed,
     // The answer card goes green on a correct VALUE, before the working is
@@ -624,6 +582,7 @@ function evaluate({ objects, workspace }) {
     steps,
     partialSteps,
     partialMessages,
+    feedback,
   }
 }
 

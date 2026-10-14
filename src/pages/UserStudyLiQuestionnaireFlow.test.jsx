@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
+vi.mock('@/study/firebase/studyFirebase', () => ({ createFirebaseStudySession: vi.fn(async () => ({ path: ['test'] })), saveFirebaseStudyRecord: vi.fn(async () => {}) }))
+vi.mock('@/study/firebase/useFirebaseStudySync', () => ({ default: () => ({ state: 'idle', count: 0 }) }))
+vi.mock('@/study/session/useStudyRecoveryBackup', () => ({ default: () => '' }))
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UserStudyLiPage from './UserStudyLiPage'
 import { readSessionQuestionnaires } from '@/study/session/questionnaireDrafts'
 import useSettingsStore from '@/store/useSettingsStore'
+vi.mock('@/study/session/studyStorage', () => ({ STUDY_PERSISTENCE_ENABLED: true, clearStoredStudyData: () => {} }))
 
 vi.mock('@/hooks/useThemeSync', () => ({ default: () => {} }))
 vi.mock('@/store/useWorkspaceStore', () => ({ default: { getState: () => ({ setUserBlockScope: () => {} }) } }))
@@ -32,7 +36,7 @@ beforeEach(() => {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
-  act(() => root.render(<UserStudyLiPage />))
+  act(() => root.render(<UserStudyLiPage autoResume={false} />))
 })
 afterEach(() => {
   act(() => root.unmount())
@@ -43,6 +47,28 @@ afterEach(() => {
 })
 
 describe('real study questionnaire navigation', () => {
+  it('opens and submits the real post-study questionnaire even when all browser backups fail', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Storage full', 'QuotaExceededError') })
+    click('Start new session')
+    click('Next')
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    click('Finish lecture')
+    answer('Lecture feedback kept in memory')
+    click('Next')
+    click('Skip tutorial')
+    click('Finish GeoScratch exercise')
+    click('Finish GeoScratch exercise')
+    click('Finish GeoScratch exercise')
+    answer('GeoScratch feedback kept in memory')
+    click('Next')
+    expect(host.querySelector('h1').textContent).toBe('Post-Study Questionnaire')
+    answer('Post-study answer kept in memory')
+    click('Submit session')
+    expect(host.querySelector('h1').textContent).toBe('Study session complete')
+    const researchId = [...host.querySelectorAll('p')].find((node) => node.textContent.startsWith('Research ID: ')).textContent.slice('Research ID: '.length)
+    const records = readSessionQuestionnaires(researchId)
+    expect(Object.values(records.find((item) => item.questionnaireId === 'post-study').answers)).toContain('Post-study answer kept in memory')
+  })
   it.each(['normal', 'backup quota', 'draft quota'])('reaches post-study after lecture then GeoScratch with %s', (mode) => {
     click('Start new session')
     const researchId = localStorage.getItem('userstudyLi.currentResearchId')

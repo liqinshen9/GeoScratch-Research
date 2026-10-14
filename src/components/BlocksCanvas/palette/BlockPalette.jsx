@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import * as Blockly from 'blockly/core'
-import { nameCompositeBlockXml } from '@/utils/blocklyXml'
+import { namedSavedWorkspaceXml } from '../blocks/savedWorkspace'
 import { Delete } from '@icon-park/react'
 import { getCategory } from '@/components/BlocksCanvas/catalog/blockCatalog'
 import { getBlockTheme } from '@/components/BlocksCanvas/blocks/blockColours'
@@ -137,7 +137,7 @@ function MyBlockPreview({ xmlText, name }) {
     })
 
     try {
-      const dom = Blockly.utils.xml.textToDom(nameCompositeBlockXml(xmlText, name))
+      const dom = Blockly.utils.xml.textToDom(namedSavedWorkspaceXml(xmlText, name))
       dom.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'))
       Blockly.Xml.domToWorkspace(dom, ws)
 
@@ -187,6 +187,7 @@ function MyBlockCard({ block, onSelect, onDragStartBlock, onDropBlock, onBeginDr
     <div
       ref={itemRef}
       className="my-block-card"
+      data-my-block-id={block.id}
       {...pointerDrag}
     >
       <button

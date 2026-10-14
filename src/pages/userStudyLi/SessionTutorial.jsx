@@ -7,6 +7,8 @@ import usePivotPlaybackStore from '@/store/usePivotPlaybackStore'
 import tutorialExercise from './SphereTutorialExercise'
 import { tutorialProgress } from './tutorialProgress'
 import { instructionIndex, TUTORIAL_INSTRUCTIONS } from './tutorialInstructions'
+import { findSavedTutorialBlock, myBlocksTutorialStage, MY_BLOCK_TUTORIAL_STAGES } from './myBlocksTutorial'
+import { MY_BLOCK_SAVED_EVENT } from '@/utils/myBlockSavedEvent'
 import './SessionTutorial.css'
 
 const COPY = {
@@ -19,7 +21,11 @@ const COPY = {
   duplicate: ['Duplicate a Sphere', 'Right-click the Sphere block and select Duplicate.'],
   replay: ['Replay the 3D animation', 'Click Show animation on the left to replay the 3D steps. You can rotate the 3D view to find a clear viewing angle.'],
   labels: ['Toggle a sphere’s label', 'Left-click a sphere in the 3D view to show its name. Click it again to hide the label.'],
-  done: ['Tutorial complete', 'You’re ready to practise dragging, connecting, and editing blocks in the trial exercise.'],
+  myblocks: ['Open My Blocks', 'Click My Blocks in the Toolbox. You can save the blocks you built and reuse them later.'],
+  make: ['Make a reusable block', 'Click Make a Block to save the current workspace, including your three spheres, as one saved item in My Blocks.'],
+  name: ['Name your block', 'Enter any name you want, such as “Mickey Mouse head”, in Block name. You can reuse the block later.'],
+  save: ['Save your block', 'Click Save to store your named block in My Blocks. If a name is already used, choose a different name.'],
+  done: ['Tutorial complete', 'You’ve practised dragging, connecting, editing, and saving blocks. You’re ready for the trial exercise.'],
 }
 
 function pointerSvg() {
@@ -38,9 +44,10 @@ function connectionPosition(workspace, block, input) {
   return Blockly.utils.svgMath.wsToScreenCoordinates(workspace, new Blockly.utils.Coordinate(blockPosition.x + offset.x, blockPosition.y + offset.y))
 }
 
-function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
+function TutorialGuide({ onDone, onSkip, labelToggleCount, workspaceId }) {
   const [coachHost, setCoachHost] = useState(null)
   const workspace = useWorkspaceStore((state) => state.workspace)
+  const userBlocks = useWorkspaceStore((state) => state.userBlocks)
   const [revision, setRevision] = useState(0)
   const [createOpen, setCreateOpen] = useState(false)
   const [focus, setFocus] = useState(null)
@@ -49,15 +56,28 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
   const [dragging, setDragging] = useState(false)
   const [watchedAnimation, setWatchedAnimation] = useState(false)
   const [triedLabels, setTriedLabels] = useState(false)
+  const [myBlocksUi, setMyBlocksUi] = useState({ open: false, dialogOpen: false, nameEdited: false, name: '' })
+  const [savedTutorialBlockId, setSavedTutorialBlockId] = useState(null)
   const [instructionSelection, setInstructionSelection] = useState(null)
   const previousLabelToggleCount = useRef(labelToggleCount)
   const animationPlaying = usePivotPlaybackStore((state) => Boolean(state.target?.userData?.tutorialPreview))
   const demoRef = useRef(null)
   const progress = tutorialProgress(workspace, createOpen)
   const { stage: workspaceStage, head, scalar, point, completed, part, fieldBlock, fieldName, expectedValue, fieldLabel, duplicateSource } = progress
+  const savedBlock = (() => {
+    if (workspaceStage !== 'done' || !workspace) return null
+    const savedByThisTutorial = userBlocks.find((block) => block.id === savedTutorialBlockId)
+    if (savedByThisTutorial) return savedByThisTutorial
+    try {
+      return findSavedTutorialBlock(userBlocks, Blockly.Xml.domToText(Blockly.Xml.workspaceToDom(workspace)))
+    } catch { return null }
+  })()
+  const savingStage = myBlocksTutorialStage({ ...myBlocksUi, savedBlock })
   const stage = workspaceStage === 'done'
-    ? !watchedAnimation ? 'replay' : !triedLabels ? 'labels' : 'done'
+    ? !watchedAnimation ? 'replay' : !triedLabels ? 'labels' : savingStage
     : workspaceStage
+  const myBlocksGuide = MY_BLOCK_TUTORIAL_STAGES.includes(stage)
+  const dialogGuide = stage === 'name' || stage === 'save'
   const automaticIndex = instructionIndex(progress, stage)
   // Resume automatic guidance whenever the user's workspace advances or changes step.
   const automaticKey = `${progress.part?.key ?? ''}:${stage}:${fieldName ?? ''}`
@@ -73,6 +93,17 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     setCoachHost(document.querySelector('.exercise-page[data-exercise-id="session-sphere-tutorial"] .editor-body-3d'))
   }, [])
 
+  useEffect(() => {
+    const handleSaved = (event) => {
+      if (event.detail?.workspaceId === workspaceId && workspaceStage === 'done') {
+        setSavedTutorialBlockId(event.detail.blockId)
+        setInstructionSelection(null)
+      }
+    }
+    window.addEventListener(MY_BLOCK_SAVED_EVENT, handleSaved)
+    return () => window.removeEventListener(MY_BLOCK_SAVED_EVENT, handleSaved)
+  }, [workspaceId, workspaceStage])
+
   useEffect(() => usePivotPlaybackStore.subscribe((state, previous) => {
     if (!state.target && state.progress >= 1 && previous.target?.userData?.tutorialPreview) {
       setWatchedAnimation(true)
@@ -82,6 +113,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     if (workspaceStage !== 'done') {
       setWatchedAnimation(false)
       setTriedLabels(false)
+      setSavedTutorialBlockId(null)
     }
   }, [workspaceStage])
   useEffect(() => {
@@ -95,6 +127,13 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     const refresh = (event) => {
       if (event?.type === Blockly.Events.BLOCK_DRAG) setDragging(Boolean(event.isStart))
       setCreateOpen(Boolean(document.querySelector('[data-category-id="create"].is-active')))
+      const nameInput = document.querySelector('[data-my-block-name]')
+      const open = Boolean(document.querySelector('[data-category-id="mybox"].is-active'))
+      setMyBlocksUi((current) => {
+        const next = { open, dialogOpen: Boolean(nameInput), name: nameInput?.value ?? '',
+          nameEdited: Boolean(nameInput) && (current.nameEdited || event?.target === nameInput && event?.type === 'input') }
+        return Object.keys(next).every((key) => next[key] === current[key]) ? current : next
+      })
       setRevision((value) => value + 1)
       if (event?.type === Blockly.Events.BLOCK_MOVE || event?.type === 'resize' || event?.type === 'scroll') {
         setLayoutRevision((value) => value + 1)
@@ -107,6 +146,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     window.addEventListener('resize', refresh)
     document.addEventListener('scroll', refresh, true)
     document.addEventListener('click', refresh)
+    document.addEventListener('input', refresh)
     refresh()
     return () => {
       observer.disconnect()
@@ -114,6 +154,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
       window.removeEventListener('resize', refresh)
       document.removeEventListener('scroll', refresh, true)
       document.removeEventListener('click', refresh)
+      document.removeEventListener('input', refresh)
     }
   }, [workspace])
 
@@ -124,13 +165,19 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     }
     const type = { sphere: 'geo_sphere', scalar: 'scalar', point: 'linalg_point' }[stage]
     const reference = stage === 'values' ? document.querySelector(`[data-tutorial-${coordinateGuide ? 'centre' : 'radius'}="${part.key}"]`) : null
-    const target = stage === 'replay' ? (animationPlaying ? null : document.querySelector('[data-tutorial-animation]'))
+    const myBlocksTarget = stage === 'myblocks' ? document.querySelector('[data-category-id="mybox"]')
+      : stage === 'make' ? document.querySelector('.make-block-button')
+        : stage === 'name' ? document.querySelector('[data-my-block-name]')
+          : stage === 'save' ? document.querySelector('[data-my-block-save="true"]') : null
+    const target = myBlocksGuide ? myBlocksTarget
+      : stage === 'replay' ? (animationPlaying ? null : document.querySelector('[data-tutorial-animation]'))
       : stage === 'values' ? (inputArrowGuide ? numberField : reference)
       : stage === 'duplicate' ? duplicateSource?.getSvgRoot()?.querySelector(':scope > .blocklyPath')
       : stage === 'open' ? document.querySelector('[data-category-id="create"]')
       : type ? document.querySelector(`[data-block-type="${type}"]`)
         : stage === 'radius' ? scalar?.getSvgRoot() : stage === 'centre' ? point?.getSvgRoot() : numberField ?? head?.getSvgRoot()
     if (type) target?.scrollIntoView({ block: 'nearest' })
+    if (myBlocksGuide) { target?.scrollIntoView({ block: 'nearest' }); target?.classList.add('tutorial-action-highlight') }
     reference?.scrollIntoView({ block: 'nearest' })
     reference?.classList.add('tutorial-table-highlight')
     const checkButton = stage === 'values' ? document.querySelector(`.exercise-step-check[data-step-key="${part.key}"]`) : null
@@ -144,14 +191,15 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     const rect = target?.getBoundingClientRect()
     const referenceRect = reference?.getBoundingClientRect()
     const padding = stage === 'replay' ? 3 : 6
-    if (stage !== 'replay') setFocus(rect && stage !== 'done' ? { x: rect.x - padding, y: rect.y - padding, width: rect.width + padding * 2, height: rect.height + padding * 2, outline: stage === 'open', reference: referenceRect, check: checkButton?.getBoundingClientRect() } : null)
+    if (stage !== 'replay') setFocus(rect && stage !== 'done' ? { x: rect.x - padding, y: rect.y - padding, width: rect.width + padding * 2, height: rect.height + padding * 2, outline: stage === 'open' || myBlocksGuide, reference: referenceRect, check: checkButton?.getBoundingClientRect() } : null)
     return () => {
       blockRoot?.classList.remove('tutorial-block-highlight')
       reference?.classList.remove('tutorial-table-highlight')
       checkButton?.classList.remove('tutorial-check-highlight')
       if (stage === 'replay') target?.classList.remove('tutorial-check-highlight')
+      target?.classList.remove('tutorial-action-highlight')
     }
-  }, [browsing, dragging, stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key, duplicateSource, animationPlaying])
+  }, [browsing, dragging, stage, head, scalar, point, numberField, fieldBlock, revision, coordinateGuide, inputArrowGuide, part?.key, duplicateSource, animationPlaying, myBlocksGuide, savedBlock?.id])
 
   useEffect(() => {
     if (browsing || stage !== 'replay') return undefined
@@ -188,6 +236,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     host.replaceChildren()
     const animations = []
     if (browsing || dragging) return undefined
+    if (myBlocksGuide) return undefined
     if (stage === 'values' && !inputArrowGuide) return undefined
     const type = { sphere: 'geo_sphere', scalar: 'scalar', point: 'linalg_point' }[stage]
     const preview = type ? document.querySelector(`[data-block-type="${type}"]`) : null
@@ -283,7 +332,7 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
       animations.push(cursor.animate(pointerFrames, timing))
     }
     return () => { animations.forEach((animation) => animation.cancel()); host.replaceChildren() }
-  }, [browsing, dragging, stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision, duplicateSource])
+  }, [browsing, dragging, stage, workspace, head, scalar, point, numberField, fieldBlock, fieldName, fieldLabel, expectedValue, part?.key, inputArrowGuide, replay, createOpen, layoutRevision, duplicateSource, myBlocksGuide])
 
   const [title, description] = coordinateGuide
     ? ['Set the centre', 'Enter the centre coordinates in your Point block.']
@@ -299,6 +348,8 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     setInstructionSelection(null)
     setWatchedAnimation(false)
     setTriedLabels(false)
+    setSavedTutorialBlockId(null)
+    setMyBlocksUi({ open: false, dialogOpen: false, nameEdited: false, name: '' })
     workspace?.clear()
     workspace?.clearUndo()
     document.querySelector('[data-category-id].is-active')?.click()
@@ -307,14 +358,16 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
     setReplay((value) => value + 1)
   }
   return <>
-    {focus && <svg className="tutorial-spotlight" aria-hidden="true"><path fillRule="evenodd" d={`M0 0H${window.innerWidth}V${window.innerHeight}H0Z M${focus.x} ${focus.y}v${focus.height}h${focus.width}v-${focus.height}Z${inputArrowGuide && focus.reference ? ` M${focus.reference.x} ${focus.reference.y}v${focus.reference.height}h${focus.reference.width}v-${focus.reference.height}Z` : ''}${focus.check ? ` M${focus.check.x - 3} ${focus.check.y - 3}v${focus.check.height + 6}h${focus.check.width + 6}v-${focus.check.height + 6}Z` : ''}`} />{focus.outline && <rect x={focus.x} y={focus.y} width={focus.width} height={focus.height} rx="8" />}</svg>}
+    {focus && <svg className={`tutorial-spotlight${dialogGuide ? ' tutorial-save-overlay' : ''}`} aria-hidden="true"><path fillRule="evenodd" d={`M0 0H${window.innerWidth}V${window.innerHeight}H0Z M${focus.x} ${focus.y}v${focus.height}h${focus.width}v-${focus.height}Z${inputArrowGuide && focus.reference ? ` M${focus.reference.x} ${focus.reference.y}v${focus.reference.height}h${focus.reference.width}v-${focus.reference.height}Z` : ''}${focus.check ? ` M${focus.check.x - 3} ${focus.check.y - 3}v${focus.check.height + 6}h${focus.check.width + 6}v-${focus.check.height + 6}Z` : ''}`} />{focus.outline && <rect x={focus.x} y={focus.y} width={focus.width} height={focus.height} rx="8" />}</svg>}
     <div className="tutorial-demo" ref={demoRef} aria-hidden="true" />
-    {focus && stage === 'replay' && !browsing && !animationPlaying && (
-      <svg className="tutorial-animation-arrow" aria-hidden="true">
-        <path d={`M${focus.x + focus.width / 2} ${focus.y - 38} L${focus.x + focus.width / 2} ${focus.y - 6} M${focus.x + focus.width / 2 - 5} ${focus.y - 13} L${focus.x + focus.width / 2} ${focus.y - 6} L${focus.x + focus.width / 2 + 5} ${focus.y - 13}`} />
+    {focus && (stage === 'replay' || myBlocksGuide) && !browsing && !animationPlaying && (
+      <svg className={`tutorial-animation-arrow${dialogGuide ? ' tutorial-save-overlay' : ''}`} aria-hidden="true">
+        <path d={stage === 'myblocks'
+          ? `M${focus.x + focus.width / 2} ${focus.y + focus.height + 38} L${focus.x + focus.width / 2} ${focus.y + focus.height + 6} M${focus.x + focus.width / 2 - 5} ${focus.y + focus.height + 13} L${focus.x + focus.width / 2} ${focus.y + focus.height + 6} L${focus.x + focus.width / 2 + 5} ${focus.y + focus.height + 13}`
+          : `M${focus.x + focus.width / 2} ${focus.y - 38} L${focus.x + focus.width / 2} ${focus.y - 6} M${focus.x + focus.width / 2 - 5} ${focus.y - 13} L${focus.x + focus.width / 2} ${focus.y - 6} L${focus.x + focus.width / 2 + 5} ${focus.y - 13}`} />
       </svg>
     )}
-    {coachHost && createPortal(<section className="tutorial-coach" aria-label="Tutorial guide">
+    {coachHost && createPortal(<section className={`tutorial-coach${dialogGuide ? ' tutorial-coach--dialog' : ''}`} aria-label="Tutorial guide">
       <div className="tutorial-coach__top"><span className="tutorial-eyebrow">{completed.length}/3</span>{workspaceStage !== 'done' && <button type="button" className="tutorial-skip" onClick={onSkip ?? onDone}>Skip tutorial</button>}</div>
       <div aria-live="polite">
         <h2>{browsing ? instructionTitle : title}</h2>
@@ -331,19 +384,20 @@ function TutorialGuide({ onDone, onSkip, labelToggleCount }) {
         <button type="button" disabled={selectedIndex >= automaticIndex}
           onClick={() => setInstructionSelection({ automaticKey, index: Math.min(selectedIndex + 1, automaticIndex) })}>Next</button>
       </nav>
-    </section>, coachHost)}
+    </section>, dialogGuide ? document.body : coachHost)}
   </>
 }
 
 export default function SessionTutorial({ researchId, onDone, onSkip }) {
   const [labelToggleCount, setLabelToggleCount] = useState(0)
+  const workspaceId = `userstudy-Li-${researchId}-tutorial`
   return <div className="app-container flex h-dvh flex-col overflow-hidden">
     <main className="flex min-h-0 flex-1 flex-col">
       <ExercisePage exerciseModule={tutorialExercise} standalone
-        workspaceId={`userstudy-Li-${researchId}-tutorial`} showDebugSolution={false}
+        workspaceId={workspaceId} showDebugSolution={false}
         showAnswerHighlight={false} hideAnimationTransport wideTaskPanel
         toggleLabelsOnLeftClick onLabelsToggle={() => setLabelToggleCount((count) => count + 1)} />
-      <TutorialGuide onDone={onDone} onSkip={onSkip} labelToggleCount={labelToggleCount} />
+      <TutorialGuide onDone={onDone} onSkip={onSkip} labelToggleCount={labelToggleCount} workspaceId={workspaceId} />
     </main>
   </div>
 }

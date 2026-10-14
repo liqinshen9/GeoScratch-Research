@@ -23,6 +23,8 @@
 .tutorial-goal > p { margin: 12px 0; }
 .tutorial-coach { position: absolute; z-index: 110; left: 16px; bottom: 16px; box-sizing: border-box; width: min(370px, calc(100% - 32px)); padding: 22px; border: 1px solid #d5e2f7; border-radius: 14px; color: #172642; background: #fff; box-shadow: 0 10px 45px #15356630; }
 .exercise-page[data-exercise-id='session-sphere-tutorial'] .editor-body-3d { position: relative; }
+/* Keep camera-dependent label z-indices inside the scene, below the coach. */
+.exercise-page[data-exercise-id='session-sphere-tutorial'] .scene-view-content { isolation: isolate; z-index: 0; }
 .tutorial-coach__top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .tutorial-coach h2 { font-size: 21px; font-weight: 700; margin: 12px 0 8px; }
 .tutorial-coach p { font-size: 14px; line-height: 1.6; margin-bottom: 18px; }
@@ -63,3 +65,6 @@
   .tutorial-coach { left: 12px; bottom: 12px; width: calc(100% - 24px); }
 }
 @media (prefers-reduced-motion: reduce) { .tutorial-demo { display: none; } }
+.tutorial-action-highlight { outline: 3px solid #fc3 !important; outline-offset: 3px; }
+.tutorial-spotlight.tutorial-save-overlay, .tutorial-animation-arrow.tutorial-save-overlay { z-index: 10001; }
+.tutorial-coach.tutorial-coach--dialog { position: fixed; z-index: 10002; left: auto; right: 16px; bottom: 16px; width: min(370px, calc(100vw - 32px)); }

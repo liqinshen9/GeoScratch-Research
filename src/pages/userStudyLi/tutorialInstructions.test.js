@@ -18,9 +18,9 @@ describe('tutorial instruction navigation', () => {
     }
   })
 
-  it('starts at opening the toolbox and finishes after replay and labels', () => {
+  it('starts at opening the toolbox and guides My Blocks after replay and labels', () => {
     expect(instructionIndex({}, 'open')).toBe(0)
-    expect(TUTORIAL_INSTRUCTIONS.slice(-3).map(({ stage }) => stage)).toEqual(['replay', 'labels', 'done'])
+    expect(TUTORIAL_INSTRUCTIONS.slice(-7).map(({ stage }) => stage)).toEqual(['replay', 'labels', 'myblocks', 'make', 'name', 'save', 'done'])
     expect(instructionIndex({}, 'done')).toBe(TUTORIAL_INSTRUCTIONS.length - 1)
   })
 })

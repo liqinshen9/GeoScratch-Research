@@ -1,5 +1,7 @@
 import THREE from '@/utils/three'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect } from 'react'
+import FeedbackSteps from './shared/FeedbackSteps'
+import { rotationFeedback } from './shared/formativeFeedback'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import usePivotPlaybackStore from '@/store/usePivotPlaybackStore'
 import { installPivotStepAnimation } from './shared/pivotStepAnimation'
@@ -59,49 +61,8 @@ function Givens() {
     <section><p>Rotate the cube and its corner point P together into the orientation shown below. After completing the transformations, the cube’s centre C should be at (1, 1, 1), and P should be at (2, 2, 2).</p><Diagram output /></section>
   </div>
 }
-export function Steps({ steps, partialSteps, partialMessages, feedbackRevision, passed, tasks = ROTATION_TASKS }) {
-  const [checkedSteps, setCheckedSteps] = useState({})
-  const pendingCheckRef = useRef(0)
-
-  useEffect(() => {
-    setCheckedSteps({})
-  }, [feedbackRevision])
-
-  useEffect(
-    () => () => {
-      window.clearTimeout(pendingCheckRef.current)
-    },
-    [],
-  )
-
-  const checkStep = (key) => {
-    window.clearTimeout(pendingCheckRef.current)
-    pendingCheckRef.current = window.setTimeout(() => {
-      setCheckedSteps((checked) => ({ ...checked, [key]: true }))
-    }, 100)
-  }
-
-  return <ol className={`exercise-task-steps${passed ? ' is-passed' : ''}`}>{tasks.map(([key, text]) => {
-    const wasChecked = checkedSteps[key]
-    const showValueFeedback = wasChecked && !steps[key] && partialSteps?.[key]
-    const showIncompleteFeedback = wasChecked && !steps[key] && !partialSteps?.[key]
-    return <li key={key} className={steps[key] ? 'is-complete' : wasChecked ? 'is-partial' : ''}>
-      <div className="exercise-step-row">
-        <span>{text}</span>
-        <button
-          type="button"
-          className="exercise-step-check"
-          data-step-key={key}
-          data-complete={steps[key] ? 'true' : undefined}
-          onClick={() => checkStep(key)}
-        >
-          {steps[key] ? 'Complete' : 'Check'}
-        </button>
-      </div>
-      {showValueFeedback && <span className="exercise-step-feedback" role="status">{partialMessages?.[key] || 'One of the values does not match the diagram.'}</span>}
-      {showIncompleteFeedback && <span className="exercise-step-feedback" role="status">This step is not complete yet.</span>}
-    </li>
-  })}</ol>
+export function Steps({ tasks = ROTATION_TASKS, ...props }) {
+  return <FeedbackSteps {...props} tasks={tasks} />
 }
 const ROTATION_TASKS = [
   ['pipeline', 'My Blocks: add the complex object you saved in the previous exercise to the workspace, then connect it to a Transform Pipeline.'],
@@ -136,7 +97,8 @@ function evaluate({ objects, workspace }) {
         ? 'The rotation axis does not match the diagram.'
         : null,
   }
-  return { passed: poseIsCorrect && chain.length === 3 && Object.values(steps).every(Boolean), correct: poseIsCorrect, incorrect: false, target, answer: { type: 'scaleAndRotation' }, steps, partialSteps, partialMessages }
+  const feedback = rotationFeedback(workspace, pipeline, chain, steps)
+  return { passed: poseIsCorrect && chain.length === 3 && Object.values(steps).every(Boolean), correct: poseIsCorrect, incorrect: false, target, answer: { type: 'scaleAndRotation' }, steps, partialSteps, partialMessages, feedback }
 }
 const solutionXml = `<xml xmlns="https://developers.google.com/blockly/xml">
   <block type="transform_pipeline" x="60" y="60"><value name="INPUT"><block type="geo_special_cube" /></value><statement name="STEPS"><block type="trans_matrix"><field name="TX">-1</field><field name="TY">-1</field><field name="TZ">-1</field><next><block type="rot_matrix"><field name="AXIS">Y</field><field name="DEGREES">90</field><next><block type="trans_matrix"><field name="TX">1</field><field name="TY">1</field><field name="TZ">1</field></block></next></block></next></block></statement></block>

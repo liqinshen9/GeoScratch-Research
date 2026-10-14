@@ -1,14 +1,19 @@
 import { create } from 'zustand'
+import { STUDY_PERSISTENCE_ENABLED } from '@/study/session/studyStorage'
 
 const USER_BLOCKS_STORAGE_KEY = 'geoscratch:userBlocks'
 const MAX_RECENT_DELETED_USER_BLOCKS = 8
 const SAVED_XML_STORAGE_KEY = 'geoscratch:workspace-xml'
+const studyBlocks = new Map()
+const isStudyScope = (scope) => scope?.startsWith('userstudy-Li-')
+const isMemoryStudyScope = (scope) => !STUDY_PERSISTENCE_ENABLED && isStudyScope(scope)
 
 function userBlocksStorageKey(scope) {
   return scope ? `${USER_BLOCKS_STORAGE_KEY}:${scope}` : USER_BLOCKS_STORAGE_KEY
 }
 
 function loadUserBlocks(scope = null) {
+  if (isMemoryStudyScope(scope)) return studyBlocks.get(scope) ?? []
   if (typeof window === 'undefined') return []
   try {
     const parsed = JSON.parse(window.localStorage.getItem(userBlocksStorageKey(scope)) || '[]')
@@ -20,6 +25,7 @@ function loadUserBlocks(scope = null) {
 }
 
 function persistUserBlocks(userBlocks, scope = null) {
+  if (isMemoryStudyScope(scope)) { studyBlocks.set(scope, userBlocks); return }
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(userBlocksStorageKey(scope), JSON.stringify(userBlocks))
@@ -45,7 +51,8 @@ function loadSavedXml() {
 function persistSavedXml(savedXml) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(SAVED_XML_STORAGE_KEY, JSON.stringify(savedXml))
+    const persistent = Object.fromEntries(Object.entries(savedXml).filter(([id]) => !isMemoryStudyScope(id)))
+    window.localStorage.setItem(SAVED_XML_STORAGE_KEY, JSON.stringify(persistent))
   } catch (err) {
     console.error('[GeoScratch] Failed to save workspace state:', err)
   }
@@ -84,6 +91,12 @@ const useWorkspaceStore = create((set) => ({
     set((state) => (state.selectedBlockId === id ? state : { selectedBlockId: id })),
 
   setWorkspace: (ws) => set({ workspace: ws }),
+  restoreStudyWorkspace: (researchId, { savedXml = {}, userBlocks = [] }) => {
+    const scope = `userstudy-Li-${researchId}`
+    studyBlocks.set(scope, userBlocks)
+    set((state) => ({ userBlockScope: scope, userBlocks,
+      savedXml: { ...state.savedXml, ...savedXml }, recentDeletedUserBlocks: [] }))
+  },
   setDialogOpen: (open) => set({ dialogOpen: open }),
   setExampleXml: (xml) => set({ exampleXml: xml }),
   setTitle: (newTitle) => set({ title: newTitle }),
@@ -93,7 +106,7 @@ const useWorkspaceStore = create((set) => ({
   saveWorkspaceXml: (id, xmlText) =>
     set((state) => {
       const savedXml = { ...state.savedXml, [id]: xmlText }
-      persistSavedXml(savedXml)
+      if (!isMemoryStudyScope(id)) persistSavedXml(savedXml)
       return { savedXml }
     }),
   clearSavedWorkspaces: (ids) =>

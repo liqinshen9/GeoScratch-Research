@@ -1,3 +1,5 @@
+import { exerciseTrackingDisabled } from './studyEvents'
+
 const PREFIX = 'userstudyLi.interactions.'
 const SCROLL_IDLE_MS = 200
 const DRAG_THRESHOLD_PX = 5
@@ -76,7 +78,7 @@ export function readInteractionRecords(researchId, storage = window.localStorage
   return records.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.sequence - b.sequence)
 }
 
-export function createInteractionTracker({ researchId, storage = window.localStorage, getWorkspace, onError = () => {} }) {
+export function createInteractionTracker({ researchId, storage = window.localStorage, getWorkspace, onError = () => {}, onRecovered = () => {} }) {
   const streamId = id()
   const started = performance.now()
   let sequence = 0
@@ -84,12 +86,15 @@ export function createInteractionTracker({ researchId, storage = window.localSto
   let context = null
   let entered = started
   let pending = []
+  let storageFailed = false
   const pointers = new Map()
   const scrolls = new Map()
   const listeners = []
-  const tracksActivity = (eventContext = context) => eventContext?.conditionId === 'geoscratch' && eventContext?.phase === 'geoscratch'
+  const tracksActivity = (eventContext = context) => eventContext?.conditionId === 'geoscratch'
+    && eventContext?.phase === 'geoscratch' && !exerciseTrackingDisabled(eventContext)
 
   function record(type, details = {}, eventContext = context) {
+    if (exerciseTrackingDisabled(eventContext)) return null
     // Lecture/questionnaire views record deliberate submissions only.
     if (!tracksActivity(eventContext) && !['answer_submit', 'questionnaire_submit'].includes(type)) return null
     const entry = {
@@ -107,9 +112,15 @@ export function createInteractionTracker({ researchId, storage = window.localSto
   function flush() {
     if (!pending.length) return
     try {
-      storage.setItem(`${PREFIX}${researchId}.${streamId}.${batch++}`, JSON.stringify(pending))
+      storage.setItem(`${PREFIX}${researchId}.${streamId}.${batch}`, JSON.stringify(pending))
+      batch++
       pending = []
-    } catch (error) { onError(error) }
+      if (storageFailed) { storageFailed = false; onRecovered() }
+    } catch (error) {
+      const firstFailure = !storageFailed
+      storageFailed = true
+      if (firstFailure) onError(error)
+    }
   }
 
   function setContext(next) {

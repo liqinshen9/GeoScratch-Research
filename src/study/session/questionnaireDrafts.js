@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { STUDY_PERSISTENCE_ENABLED } from './studyStorage'
 
 const PREFIX = 'userstudyLi.questionnaireDrafts.'
 const keyFor = (researchId, questionnaireId) => `${PREFIX}${researchId}.${questionnaireId}`
@@ -6,6 +7,7 @@ const unsaved = new Map()
 
 function readRecord(key) {
   if (unsaved.has(key)) return unsaved.get(key)
+  if (!STUDY_PERSISTENCE_ENABLED) return null
   try {
     const saved = window.localStorage.getItem(key)
     return saved ? JSON.parse(saved) : null
@@ -13,6 +15,11 @@ function readRecord(key) {
 }
 
 function writeRecord(key, record) {
+  if (!STUDY_PERSISTENCE_ENABLED) {
+    unsaved.set(key, record)
+    window.dispatchEvent(new CustomEvent('geoscratch:questionnaire-changed', { detail: { researchId: record.researchId } }))
+    return true
+  }
   try {
     window.localStorage.setItem(key, JSON.stringify(record))
     unsaved.delete(key)
@@ -24,6 +31,10 @@ function writeRecord(key, record) {
   }
 }
 
+export function restoreSessionQuestionnaires(researchId, records) {
+  for (const record of records ?? []) unsaved.set(keyFor(researchId, record.questionnaireId), record)
+}
+
 export function readQuestionnaireDraft(researchId, questionnaireId) {
   return readRecord(keyFor(researchId, questionnaireId))
 }
@@ -32,7 +43,7 @@ export function readSessionQuestionnaires(researchId) {
   const prefix = `${PREFIX}${researchId}.`
   const results = new Map()
   try {
-    for (let index = 0; index < window.localStorage.length; index++) {
+    for (let index = 0; STUDY_PERSISTENCE_ENABLED && index < window.localStorage.length; index++) {
       const key = window.localStorage.key(index)
       if (key?.startsWith(prefix)) {
         const record = readRecord(key)

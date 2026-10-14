@@ -1,0 +1,78 @@
+// Checks draft and trial recovery through refresh while Firebase is unreachable.
+import { chromium } from 'playwright'
+import { mkdir } from 'node:fs/promises'
+const browser = await chromium.launch({ channel: 'chrome', headless: true })
+try {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+  const page = await context.newPage()
+  await page.goto('http://localhost:5173/userstudy-Li')
+  await page.getByRole('button', { name: 'Start new session', exact: true }).click()
+  const id = await page.locator('input[readonly]').inputValue()
+  const waitBackup = async (predicate) => {
+    await page.waitForFunction(async ({ id, predicate }) => {
+      const { readStudyBackup } = await import('/src/study/session/studyRecoveryStore.js')
+      const saved = await readStudyBackup(id)
+      if (predicate === 'draft') return saved?.snapshot?.questionnaires?.some((record) => record.rawAnswers?.areaOfStudyOrWorkDetail === 'OFFLINE RECOVERY TEST')
+      return saved?.snapshot?.activeGeoResult?.steps?.cube?.checkCount === 2
+        && saved.snapshot.userBlocks?.some((block) => block.name === 'OFFLINE-CUBE')
+        && Object.values(saved.snapshot.savedXml ?? {}).some((xml) => xml.includes('geo_cube'))
+    }, { id, predicate })
+  }
+  await page.locator('.user-study-li-cloud-status.is-saved').waitFor({ timeout: 30000 })
+  const original = await page.evaluate(async (id) => (await (await import('/src/study/session/studyRecoveryStore.js')).readStudyBackup(id)).firebaseSession.path, id)
+  await context.route(/https:\/\/(firestore|identitytoolkit|securetoken)\.googleapis\.com\//, (route) => route.abort())
+  await context.addInitScript(() => Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }))
+  await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); dispatchEvent(new Event('offline')) })
+  await page.locator('.user-study-li-detail input').first().fill('OFFLINE RECOVERY TEST')
+  await waitBackup('draft')
+  await page.reload()
+  await page.locator('.user-study-li-detail input').first().waitFor()
+  if (await page.getByRole('button', { name: 'Recover study', exact: true }).count()) throw new Error('Participant recovery controls should not be shown.')
+  if (await page.locator('input[readonly]').inputValue() !== id) throw new Error('Refresh changed the research ID.')
+  if (await page.locator('.user-study-li-detail input').first().inputValue() !== 'OFFLINE RECOVERY TEST') throw new Error('Offline draft was lost on refresh.')
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await page.getByRole('alert').filter({ hasText: 'You have not moved to the next stage' }).waitFor()
+  if (await page.locator('h1').textContent() !== 'Demographics Questionnaire') throw new Error('Offline Next advanced before database confirmation.')
+  await context.unroute(/https:\/\/(firestore|identitytoolkit|securetoken)\.googleapis\.com\//)
+  await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true }); dispatchEvent(new Event('online')) })
+  await page.getByRole('button', { name: 'Next', exact: true }).click()
+  await page.getByRole('button', { name: /Condition 1: GeoScratch/ }).click()
+  await page.getByRole('button', { name: 'Skip tutorial', exact: true }).click()
+  await context.route(/https:\/\/(firestore|identitytoolkit|securetoken)\.googleapis\.com\//, (route) => route.abort())
+  await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }); dispatchEvent(new Event('offline')) })
+  await page.waitForFunction(async () => {
+    const { default: store } = await import('/src/store/useWorkspaceStore.js')
+    const state = store.getState()
+    if (!state.workspace?.rendered) return false
+    const cube = state.workspace.newBlock('geo_cube')
+    cube.initSvg(); cube.render()
+    state.addUserBlock({ name: 'OFFLINE-CUBE', xmlText: '<xml xmlns="https://developers.google.com/blockly/xml"><block type="geo_cube" /></xml>' })
+    return true
+  })
+  await page.locator('[data-step-key="cube"]').click()
+  await page.locator('[data-step-key="cube"]').click()
+  await waitBackup('counts')
+  await page.reload()
+  await page.waitForFunction(async () => {
+    const { default: store } = await import('/src/store/useWorkspaceStore.js')
+    return store.getState().workspace?.getBlocksByType('geo_cube', false).length > 0
+      && store.getState().userBlocks.some((block) => block.name === 'OFFLINE-CUBE')
+  })
+  await page.locator('[data-step-key="cube"]').click()
+  await page.getByRole('button', { name: 'Next exercise', exact: true }).click()
+  await page.getByRole('alert').filter({ hasText: 'You have not moved to the next stage' }).waitFor()
+  await context.unroute(/https:\/\/(firestore|identitytoolkit|securetoken)\.googleapis\.com\//)
+  await page.evaluate(() => { Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true }); dispatchEvent(new Event('online')) })
+  await page.getByRole('button', { name: 'Next exercise', exact: true }).click()
+  await page.getByRole('heading', { name: 'Rotate a cube and its corner point', exact: true }).waitFor()
+  await page.locator('.user-study-li-cloud-status.is-saved').waitFor({ timeout: 30000 })
+  const recovered = await page.evaluate(async (id) => (await import('/src/study/firebase/studyFirebase.js')).recoverFirebaseStudy(id), id)
+  if (recovered.firebaseSession.path.join('/') !== original.join('/')) throw new Error('Refresh created a duplicate session.')
+  const trial = recovered.records.find((record) => record.stageId === 'geoscratch-trial')
+  if (trial?.data.result.steps.cube.checkCount !== 3) throw new Error('Check counts were not preserved and uploaded.')
+  const demographics = recovered.records.find((record) => record.stageId === 'demographics')
+  if (!demographics.data.responses.some((field) => field.detail === 'OFFLINE RECOVERY TEST')) throw new Error('Recovered demographics did not upload.')
+  await mkdir('artifacts', { recursive: true })
+  await page.screenshot({ path: 'artifacts/firebase-study-recovery.png', fullPage: true })
+  console.log(`Offline refresh recovery and reconnection upload passed. Research ID: ${id}`)
+} finally { await browser.close() }

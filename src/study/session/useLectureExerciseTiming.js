@@ -1,7 +1,9 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
+import { STUDY_PERSISTENCE_ENABLED } from './studyStorage'
 
 export default function useLectureExerciseTiming(researchId) {
   const session = useRef({ researchId: null, exercises: {} })
+  const [storageError, setStorageError] = useState(null)
   const entries = useCallback(() => {
     if (session.current.researchId !== researchId) session.current = { researchId, exercises: {} }
     return session.current.exercises
@@ -11,7 +13,14 @@ export default function useLectureExerciseTiming(researchId) {
     completedAt: entry.completedAt, durationMs: entry.durationMs,
   })), [entries])
   const persist = useCallback(() => {
-    window.localStorage.setItem(`userstudyLi.lectureExerciseTiming.${researchId}`, JSON.stringify(read()))
+    if (!STUDY_PERSISTENCE_ENABLED) return
+    try {
+      window.localStorage.setItem(`userstudyLi.lectureExerciseTiming.${researchId}`, JSON.stringify(read()))
+      setStorageError(null)
+    } catch {
+      // The timing entries remain in memory and are included in the ZIP.
+      setStorageError('Lecture timings are kept in this tab because browser backup is unavailable. Finish and download the study ZIP before closing or refreshing.')
+    }
   }, [researchId, read])
   const start = useCallback((exerciseId) => {
     const exercises = entries()
@@ -31,5 +40,10 @@ export default function useLectureExerciseTiming(researchId) {
     entry.durationMs = elapsed(exerciseId)
     persist()
   }, [entries, elapsed, persist])
-  return { start, finish, elapsed, read }
+  const restore = useCallback((nextResearchId, timings) => {
+    session.current = { researchId: nextResearchId, exercises: Object.fromEntries((timings ?? []).map((entry) => [entry.exerciseId, {
+      ...entry, startedMonotonic: performance.now() - Math.max(0, Date.now() - Date.parse(entry.startedAt)),
+    }])) }
+  }, [])
+  return { start, finish, elapsed, read, restore, storageError }
 }

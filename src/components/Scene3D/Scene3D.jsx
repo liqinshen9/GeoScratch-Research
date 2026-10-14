@@ -320,7 +320,7 @@ export default function Scene3D({
 
   return (
     <div className="editor-body-3d">
-      <div className="relative flex-1 min-h-0">
+      <div className="scene-view-content relative flex-1 min-h-0">
         <Canvas
           shadows
           frameloop="demand"

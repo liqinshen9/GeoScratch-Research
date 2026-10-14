@@ -6,6 +6,7 @@ import DemographicsQuestionnaire from './DemographicsQuestionnaire'
 import ConditionQuestionnaire from './ConditionQuestionnaire'
 import PostStudyQuestionnaire from './PostStudyQuestionnaire'
 import { markQuestionnaireSubmitted, readQuestionnaireDraft, readSessionQuestionnaires } from '@/study/session/questionnaireDrafts'
+vi.mock('@/study/session/studyStorage', () => ({ STUDY_PERSISTENCE_ENABLED: true }))
 
 let host, root
 beforeEach(() => {

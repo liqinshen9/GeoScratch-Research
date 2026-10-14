@@ -15,6 +15,7 @@ function pointer(target, type, button = 0) {
 }
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  window.__geoScratchRuntimeMode = 'userstudy-Li-participant-tutorial'
   host = document.createElement('div')
   canvas = document.createElement('canvas')
   canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 300 })
@@ -35,9 +36,20 @@ afterEach(() => {
   canvas.remove()
   vi.restoreAllMocks()
   delete globalThis.IS_REACT_ACT_ENVIRONMENT
+  delete window.__geoScratchRuntimeMode
 })
 
 describe('3D picker study events', () => {
+  it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('keeps selection working without logging 3D interactions in %s', (exerciseId) => {
+    window.__geoScratchRuntimeMode = `userstudy-Li-participant-${exerciseId}`
+    const object = new THREE.Mesh()
+    object.userData = { geoType: 'geo_sphere', srcBlockId: 'sphere-block' }
+    vi.spyOn(THREE.Raycaster.prototype, 'intersectObjects').mockReturnValue([{ object, point: new THREE.Vector3() }])
+    pointer(canvas, 'pointerdown')
+    pointer(window, 'pointerup')
+    expect(onSelect).toHaveBeenCalledWith('sphere-block')
+    expect(events).toEqual([])
+  })
   it('emits the picked object identity and block reference while preserving selection behavior', () => {
     const object = new THREE.Group()
     object.userData = { geoType: 'exercise_point_p', srcBlockId: 'P-block', point: new THREE.Vector3(-9, 8, 7) }

@@ -50,6 +50,10 @@ const router = createBrowserRouter([
     path: '/userstudy-Li',
     element: <UserStudyLiPage />,
   },
+  {
+    path: '/study-results',
+    element: <UserStudyLiPage researcherOnly />,
+  },
 ])
 
 export default router

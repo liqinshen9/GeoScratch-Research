@@ -5,6 +5,7 @@ import THREE from '@/utils/three'
 import BlocksCanvas from '@/components/BlocksCanvas/BlocksCanvas'
 import Scene3D from '@/components/Scene3D/Scene3D'
 import EditorColumnHeaders from '@/components/EditorShell/EditorColumnHeaders'
+import ExerciseNavigation from './ExerciseNavigation'
 import { ArrowLeft, ArrowRight, AllApplication, CheckOne } from '@icon-park/react'
 import useSceneStore from '@/store/useSceneStore'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
@@ -19,6 +20,7 @@ import { getExerciseModule, hasExerciseModule } from '@/exercises'
 import PerceptualQuestion from '@/exercises/shared/PerceptualQuestion'
 import { fillSolution } from '@/exercises/shared/fillSolution'
 import { markExerciseSolved, unmarkExerciseSolved } from '@/utils/exerciseProgress'
+import { workspaceStudyContext } from '@/study/session/studyEvents'
 
 import '@/components/EditorShell/editor-shell.css'
 import './ExercisePage.css'
@@ -82,6 +84,7 @@ export default function ExercisePage({
   exerciseId: fixedExerciseId,
   exerciseTitle,
   exerciseHeading,
+  exerciseTimer,
   standalone = false,
   workspaceId,
   settingsOverrides,
@@ -95,9 +98,12 @@ export default function ExercisePage({
   transformObjects,
   toggleLabelsOnLeftClick = false,
   onLabelsToggle,
+  onPassedChange,
+  onStepAction,
 }) {
   const { objects, autoRender, setPendingObjects, setObjects } = useSceneStore()
   const { workspace, userBlocks } = useWorkspaceStore()
+  const userStudyMode = useSettingsStore((s) => s.settings.userStudyMode)
   const setExerciseOverrides = useSettingsStore((s) => s.setExerciseOverrides)
   const clearExerciseOverrides = useSettingsStore((s) => s.clearExerciseOverrides)
   const navigate = useNavigate()
@@ -164,11 +170,12 @@ export default function ExercisePage({
   // Perceptual exercises have no checker pass -- a correct MCQ pick is the pass.
   const isPerceptual = exercise.kind === 'perceptual'
   const passed = result.passed || (isPerceptual && perceptualPicked === exercise.mcq?.correctId)
+  useEffect(() => { onPassedChange?.(Boolean(passed)) }, [passed, onPassedChange])
   const studyEvaluation = JSON.stringify({ exerciseId: activeExercise, passed: Boolean(passed),
     correct: Boolean(result.correct), incorrect: Boolean(result.incorrect), steps: result.steps ?? null,
     answer: result.answer ?? null })
   useEffect(() => {
-    if (workspaceId?.startsWith('userstudy-Li-')) {
+    if (workspaceStudyContext(workspaceId)) {
       window.dispatchEvent(new CustomEvent('geoscratch:exercise-evaluation', { detail: JSON.parse(studyEvaluation) }))
     }
   }, [workspaceId, studyEvaluation])
@@ -272,40 +279,8 @@ export default function ExercisePage({
             <div className="exercise-column-heading">
               <h2>{exerciseHeading ?? (exercise.kind === 'tutorial' ? 'Tutorial' : 'Exercise')}</h2>
               {onPreviousExercise || onNextExercise ? (
-                <div
-                  className="exercise-column-heading__nav"
-                  aria-label="Study exercise navigation"
-                >
-                  {onPreviousExercise && (
-                    <button
-                      type="button"
-                      className="exercise-nav-button exercise-nav-button--wide"
-                      onClick={onPreviousExercise}
-                      title="Previous exercise"
-                      aria-label="Previous exercise"
-                    >
-                      <ArrowLeft theme="outline" size="13" fill="currentColor" aria-hidden="true" />
-                      <span>Previous</span>
-                    </button>
-                  )}
-                  {onNextExercise && (
-                    <button
-                      type="button"
-                      className="exercise-nav-button exercise-nav-button--wide"
-                      onClick={onNextExercise}
-                      title="Next exercise"
-                      aria-label="Next exercise"
-                    >
-                      <span>Next</span>
-                      <ArrowRight
-                        theme="outline"
-                        size="13"
-                        fill="currentColor"
-                        aria-hidden="true"
-                      />
-                    </button>
-                  )}
-                </div>
+                <ExerciseNavigation onPrevious={onPreviousExercise} onNext={onNextExercise}
+                  studyMode={userStudyMode} passed={passed} />
               ) : !standalone ? (
                 <div className="exercise-column-heading__nav" aria-label="Exercise navigation">
                   <button
@@ -326,8 +301,8 @@ export default function ExercisePage({
                   <button
                     type="button"
                     className="exercise-nav-button"
-                    onClick={() => previousExercise && handleSelectExercise(previousExercise.id)}
-                    disabled={!previousExercise}
+                    onClick={() => !userStudyMode && previousExercise && handleSelectExercise(previousExercise.id)}
+                    disabled={userStudyMode || !previousExercise}
                     title="Previous exercise"
                     aria-label="Previous exercise"
                   >
@@ -336,8 +311,8 @@ export default function ExercisePage({
                   <button
                     type="button"
                     className="exercise-nav-button"
-                    onClick={() => nextExercise && handleSelectExercise(nextExercise.id)}
-                    disabled={!nextExercise}
+                    onClick={() => (!userStudyMode || passed) && nextExercise && handleSelectExercise(nextExercise.id)}
+                    disabled={!nextExercise || (userStudyMode && !passed)}
                     title="Next exercise"
                     aria-label="Next exercise"
                   >
@@ -348,6 +323,7 @@ export default function ExercisePage({
             </div>
           }
           workspace={workspace}
+          sceneHeaderContent={exerciseTimer}
           workspaceMaximized={workspaceMaximized}
           preserveColumns
           hideAnimationTransport={hideAnimationTransport}
@@ -379,8 +355,10 @@ export default function ExercisePage({
               steps={result.steps}
               partialSteps={result.partialSteps}
               partialMessages={result.partialMessages}
+              feedback={result.feedback}
               feedbackRevision={stepFeedbackRevision}
               passed={passed}
+              onStepAction={onStepAction}
             />
             {!isPerceptual && !exercise.hideAnswerCard && (
               <AnswerCard result={result} className={answerCardClass} />

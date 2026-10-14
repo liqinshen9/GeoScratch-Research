@@ -1,0 +1,11 @@
+{
+  "indexes": [],
+  "fieldOverrides": [{
+    "collectionGroup": "sessions",
+    "fieldPath": "researchId",
+    "indexes": [
+      { "order": "ASCENDING", "queryScope": "COLLECTION" },
+      { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+    ]
+  }]
+}

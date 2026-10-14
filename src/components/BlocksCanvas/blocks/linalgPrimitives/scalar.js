@@ -16,10 +16,11 @@ export function initScalarBlock() {
       this.appendDummyInput()
         .appendField('Scalar')
         .appendField(new FieldObjectName(), 'GEOSCRATCH_NAME')
-        .appendField(new Blockly.FieldNumber(1), 'scalar')
+        .appendField(new Blockly.FieldNumber(1, undefined, undefined, undefined,
+          (value) => Number.isFinite(value) && value > 0 ? value : null), 'scalar')
       this.setStyle(BLOCK_STYLES.VALUE_PRIMITIVES)
       this.setColour(forRole(COLOR_ROLES.ACCENT))
-      this.setTooltip('Vector Scalar')
+      this.setTooltip('Enter a positive scalar greater than 0.')
       this.setDeletable(true)
       this.setMovable(true)
       this.setOutput(true, 'scalar')
@@ -28,6 +29,6 @@ export function initScalarBlock() {
 
   javascriptGenerator.forBlock['scalar'] = function (block) {
     const v = Number(block.getFieldValue('scalar'))
-    return [String(isFinite(v) ? v : 1), Order.ATOMIC]
+    return [String(Number.isFinite(v) && v > 0 ? v : 1), Order.ATOMIC]
   }
 }

@@ -19,6 +19,9 @@ vi.mock('@/components/BlocksCanvas/hooks/useBlockTrash', () => ({
 }))
 vi.mock('@/utils/addBlockToWorkspace', () => ({ default: vi.fn() }))
 vi.mock('@/utils/addCompositeBlockToWorkspace', () => ({ default: vi.fn(() => true) }))
+// This test isolates drop routing; named-block serialization has its own
+// coverage with real Blockly workspaces in savedWorkspace.test.js.
+vi.mock('./blocks/savedWorkspace', () => ({ namedSavedWorkspaceXml: vi.fn((xmlText) => xmlText) }))
 vi.mock('@/store/useWorkspaceStore', () => {
   const state = { selectedBlockId: null, setSelectedBlockId: vi.fn(), addUserBlock: vi.fn(),
     deleteUserBlock: mocks.deleteUserBlock, userBlocks: [{ id: 'saved-cube', name: 'Saved cube', xmlText: '<xml><block type="geo_cube"/></xml>' }] }

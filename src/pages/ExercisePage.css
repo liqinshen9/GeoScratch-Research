@@ -576,7 +576,7 @@
 }
 
 .exercise-task-steps li.is-partial {
-  color: var(--state-warn-fg);
+  color: var(--geo-text);
 }
 
 .exercise-task-steps li.is-partial::before {
@@ -625,10 +625,20 @@
 
 .exercise-step-feedback {
   display: block;
-  margin-top: 0.2rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  background: var(--state-warn-bg);
+  border-left: 3px solid var(--state-warn-border);
+  border-radius: 0.35rem;
   color: var(--state-warn-fg);
   font-size: 0.76rem;
-  font-weight: 600;
+  font-weight: 400;
+}
+
+.exercise-task-steps .is-complete .exercise-step-feedback {
+  background: var(--state-pass-bg);
+  border-left-color: var(--state-pass-border);
+  color: var(--state-pass-fg);
 }
 
 .exercise-subtask-list {

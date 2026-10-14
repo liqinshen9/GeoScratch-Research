@@ -9,9 +9,9 @@ const ANSWER_CHOICES = [
   { id: 'divide-squared-normal', label: '17 / 3' },
 ]
 
-export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseChange, onExerciseFinish, trackingError }) {
-  const [exercise, setExercise] = useState(1)
-  const [selectedAnswer, setSelectedAnswer] = useState('')
+export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseChange, onExerciseFinish, trackingError, initialExercise = 1, drafts = {}, onDraftChange, onExerciseNumberChange }) {
+  const [exercise, setExercise] = useState(initialExercise)
+  const [selectedAnswer, setSelectedAnswer] = useState(drafts['point-plane-distance'] ?? '')
   const [submittedAnswer, setSubmittedAnswer] = useState('')
   useEffect(() => {
     onExerciseChange?.(exercise === 1 ? 'cube-point-pivot-rotation' : 'point-plane-distance')
@@ -21,12 +21,15 @@ export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseCh
     return <div key="cube" className="user-study-li-form-page user-study-li-lecture-page user-study-li-lecture-cube-page">
       <main className="user-study-li-lecture-content">
         {trackingError && <p role="alert">{trackingError}</p>}
-        <LectureCubeRotation onSubmitAnswer={onSubmitAnswer} />
+        <LectureCubeRotation onSubmitAnswer={onSubmitAnswer} initialAnswer={drafts['cube-point-pivot-rotation'] ?? ''}
+          onDraftChange={(answer) => onDraftChange?.('cube-point-pivot-rotation', answer)} />
       </main>
       <footer className="user-study-li-lecture-footer">
         <button type="button" className="user-study-li-primary-action" onClick={() => {
-          onExerciseFinish?.('cube-point-pivot-rotation')
-          setExercise(2)
+          const proceed = (saved) => { if (saved !== false) { setExercise(2); onExerciseNumberChange?.(2) } }
+          const saved = onExerciseFinish?.('cube-point-pivot-rotation')
+          if (saved?.then) void saved.then(proceed)
+          else proceed(saved)
         }}>
           Next
         </button>
@@ -91,6 +94,7 @@ export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseCh
                   checked={selectedAnswer === id}
                   onChange={() => {
                     setSelectedAnswer(id)
+                    onDraftChange?.('point-plane-distance', id)
                     setSubmittedAnswer('')
                   }}
                 />
@@ -113,8 +117,9 @@ export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseCh
     </main>
     <footer className="user-study-li-lecture-footer">
       <button type="button" className="user-study-li-primary-action" onClick={() => {
-        onExerciseFinish?.('point-plane-distance')
-        onComplete()
+        const saved = onExerciseFinish?.('point-plane-distance')
+        if (saved?.then) void saved.then((success) => { if (success !== false) onComplete() })
+        else if (saved !== false) onComplete()
       }}>
         Continue to questionnaire
       </button>

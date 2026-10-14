@@ -144,6 +144,17 @@ function runConnectedTransformPipelines(workspace) {
   }
 }
 
+// Encapsulated saved blocks compile their internal pipelines into descriptors.
+// Reuse the normal pipeline runner so saved transforms retain the same behaviour.
+export function runSavedTransformPipelines(descriptors) {
+  const pipelines = descriptors.map(({ id, inputId, steps }) => {
+    const chain = steps.reduceRight((next, step) => ({ type: step.type,
+      getFieldValue: (name) => step.fields[name], getNextBlock: () => next }), null)
+    return { id, getInputTargetBlock: (name) => name === 'INPUT' ? { id: inputId } : chain }
+  })
+  runConnectedTransformPipelines({ getBlocksByType: () => pipelines })
+}
+
 export function generateAndRun(workspace, options = {}) {
   javascriptGenerator.addReservedWords('generatedUserCode')
   const generatedUserCode = javascriptGenerator.workspaceToCode(workspace)
@@ -157,6 +168,7 @@ export function generateAndRun(workspace, options = {}) {
     // Set here, not in sceneRuntime.js, to avoid an import cycle (#77).
     // See docs/architecture/transform-and-line-rebuild.md#the-77-problem.
     window.__geoScratchRebuildTransformedLine = rebuildTransformedLine
+    window.__geoScratchRunSavedPipelines = runSavedTransformPipelines
 
     const runWorkspace = new Function(...RUNTIME_PARAM_NAMES, generatedUserCode)
     runWorkspace(...runtimeArgs)

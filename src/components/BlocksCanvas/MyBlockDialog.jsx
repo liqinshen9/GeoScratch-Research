@@ -46,6 +46,7 @@ export default function MyBlockDialog({
             <label className="my-block-dialog__field">
               <span>Block name</span>
               <input
+                data-my-block-name
                 autoFocus
                 value={name}
                 onChange={(event) => {
@@ -71,6 +72,7 @@ export default function MyBlockDialog({
           </button>
           <button
             type="submit"
+            data-my-block-save={showNameInput ? 'true' : undefined}
             className="my-block-dialog__button my-block-dialog__button--primary"
             disabled={showNameInput && !name.trim()}
           >

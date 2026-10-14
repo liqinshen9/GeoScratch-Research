@@ -18,7 +18,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   workspace = new Blockly.Workspace()
   emit = vi.fn()
-  tracking = installWorkspaceStudyTracking(workspace, { runtimeId: 'userstudy-Li-participant-cube-point-pivot-rotation', emit,
+  tracking = installWorkspaceStudyTracking(workspace, { runtimeId: 'userstudy-Li-participant-tutorial', emit,
     getCustomBlocks: () => [{ id: 'my-block-test', name: 'Saved cube', xmlText: '<xml></xml>', source: 'workspace' }] })
   flushEvents()
 })
@@ -34,6 +34,22 @@ afterEach(() => {
 })
 
 describe('detailed Blockly study tracking', () => {
+  it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('does not install tracking or capture snapshots for %s', (exerciseId) => {
+    const other = new Blockly.Workspace()
+    const ignored = vi.fn(), getCustomBlocks = vi.fn()
+    const originalUndo = other.undo
+    try {
+      const disabled = installWorkspaceStudyTracking(other, { runtimeId: `userstudy-Li-participant-${exerciseId}`, emit: ignored, getCustomBlocks })
+      other.newBlock('study_tracking_rotation')
+      disabled.snapshot('checkpoint')
+      disabled.warning('Connection warning', {})
+      flushEvents()
+      disabled.stop()
+      expect(ignored).not.toHaveBeenCalled()
+      expect(getCustomBlocks).not.toHaveBeenCalled()
+      expect(other.undo).toBe(originalUndo)
+    } finally { other.dispose() }
+  })
   it('records actual created/deleted blocks and precise old/new numeric values', () => {
     const rotation = workspace.newBlock('study_tracking_rotation')
     flushEvents()
@@ -142,22 +158,20 @@ describe('detailed Blockly study tracking', () => {
     } finally { other.dispose() }
   })
 
-  it('routes real semantic changes into the participant log and exports one final workspace', () => {
+  it('does not include historical tutorial semantic changes or snapshots in the export', () => {
     tracking.stop()
     recorder = createInteractionTracker({ researchId: 'semantic-participant' })
-    recorder.setContext({ conditionId: 'geoscratch', phase: 'geoscratch', exerciseId: 'cube-point-pivot-rotation' })
-    tracking = installWorkspaceStudyTracking(workspace, { runtimeId: 'userstudy-Li-semantic-participant-cube-point-pivot-rotation' })
+    recorder.setContext({ conditionId: 'geoscratch', phase: 'geoscratch', exerciseId: 'tutorial' })
+    tracking = installWorkspaceStudyTracking(workspace, { runtimeId: 'userstudy-Li-semantic-participant-tutorial' })
     const rotation = workspace.newBlock('study_tracking_rotation')
     rotation.setFieldValue(90, 'DEGREES')
     vi.advanceTimersByTime(20)
     tracking.stop()
     const records = recorder.read()
     const archive = buildSessionFiles({ researchId: 'semantic-participant', studyOrder: 'geoscratch-first', interactionLog: records })
-    const exercise = archive.files.find((file) => file.data.exerciseId === 'cube-point-pivot-rotation' && file.data.conditionId === 'geoscratch').data
-    expect(exercise.events.some((event) => event.type === 'block_field_change' && event.newValue === 90)).toBe(true)
-    expect(exercise.finalWorkspace.state.blocks.blocks[0].fields.DEGREES).toBe(90)
-    expect(exercise.finalWorkspace.reason).toBe('exit')
-    expect(exercise.events.filter((event) => event.type === 'workspace_snapshot').at(-1)).not.toHaveProperty('snapshot')
+    const exercise = archive.files.find((file) => file.data.exerciseId === 'create-complex-object' && file.data.conditionId === 'geoscratch').data
+    expect(exercise).not.toHaveProperty('tutorialEvents')
+    expect(exercise).not.toHaveProperty('finalWorkspace')
     recorder.stop()
     window.localStorage.clear()
   })

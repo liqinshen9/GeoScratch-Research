@@ -7,8 +7,8 @@ const SLIDES = [
   ['composition-transformations.png', '3. Combine transformations to rotate about the centre', 'Composition of Transformations: translate the centre to the origin, rotate, then translate back. Multiply the matrices with the first transformation on the right.'],
 ]
 
-export default function LectureCubeRotation({ onSubmitAnswer }) {
-  const [answer, setAnswer] = useState('')
+export default function LectureCubeRotation({ onSubmitAnswer, initialAnswer = '', onDraftChange }) {
+  const [answer, setAnswer] = useState(initialAnswer)
   const [saved, setSaved] = useState(false)
   return <section className="user-study-li-lecture-cube" aria-labelledby="lecture-cube-title">
     <h1 id="lecture-cube-title">Exercise 1: Rotate a cube and its corner point</h1>
@@ -46,7 +46,7 @@ export default function LectureCubeRotation({ onSubmitAnswer }) {
             <span>Write the required transformation matrices from left to right in the matrix product. Clearly identify each matrix: for rotation, specify the axis and angle in degrees; for translation, specify the amounts along x, y, and z; for scaling, specify the scale factors along x, y, and z. Use only the transformations needed; you do not have to use all three types.</span>
             <small><strong>Important: When transformations are composed as a matrix product, they are applied from right to left, as explained in the slides above.</strong></small>
             <textarea rows={4} placeholder="Write the matrices and their parameters from left to right." value={answer}
-              onChange={(event) => { setAnswer(event.target.value); setSaved(false) }} />
+              onChange={(event) => { setAnswer(event.target.value); onDraftChange?.(event.target.value); setSaved(false) }} />
           </label>
           <div className="user-study-li-cube-answer-submit">
             <button type="submit" className="user-study-li-primary-action" disabled={!answer.trim()}>Submit</button>

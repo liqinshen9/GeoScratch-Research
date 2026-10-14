@@ -6,6 +6,7 @@ import rotationExercise, {
   pointMatches,
   getReusableBlockTemplate,
 } from './exercise10-cubePointPivot'
+import { constructionFeedback } from './shared/formativeFeedback'
 
 const TASKS = [
   ['cube', 'Create: a Cube with Scalar 2 for side length and Vector (1, 1, 1) for its centre.'],
@@ -37,6 +38,7 @@ function evaluate({ workspace, userBlocks = [] }) {
     correct: passed,
     incorrect: false,
     steps,
+    feedback: constructionFeedback(workspace, steps),
     partialSteps: {
       cube: !steps.cube && cubes.some(cubeHasRequiredInputs),
       point: !steps.point && points.length > 0,
