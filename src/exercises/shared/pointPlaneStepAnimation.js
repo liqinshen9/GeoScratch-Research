@@ -31,7 +31,8 @@ function objectForBlock(objects, block) {
   let match = null
   for (const object of objects) {
     object?.traverse?.((child) => {
-      if (!match && child.userData?.srcBlockId === block.id) match = child
+      if (!match && (child.userData?.srcBlockId === block.id
+        || child.userData?.exercisePointQBlockId === block.id)) match = child
     })
     if (match) break
   }

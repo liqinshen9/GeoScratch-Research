@@ -86,17 +86,21 @@ export function initVectorArithmeticBlock() {
     },
   }
 
-  javascriptGenerator.forBlock['vector_arithmetic'] = function (block, g) {
-    const op = block.getFieldValue('OP') || 'add'
-    const u = g.valueToCode(block, 'U', Order.FUNCTION_CALL) || 'null'
-    const v = g.valueToCode(block, 'V', Order.FUNCTION_CALL) || 'null'
+  javascriptGenerator.forBlock['vector_arithmetic'] = (block, g) => vectorArithmeticCode(block, g)
+}
+
+// Reuse the exact point-difference construction for equivalent manual answers.
+export function vectorArithmeticCode(block, g, inputs = {}) {
+    const op = inputs.op ?? (block.getFieldValue('OP') || 'add')
+    const u = inputs.u ?? (g.valueToCode(block, 'U', Order.FUNCTION_CALL) || 'null')
+    const v = inputs.v ?? (g.valueToCode(block, 'V', Order.FUNCTION_CALL) || 'null')
     // Scene labels: the connected operand's own variable name, baked in at
     // code-gen time (the operand Vector3 doesn't carry its name when it's not
     // standalone). Falls back to a/b only when there's no named block.
-    const uFallback = JSON.stringify(operandName(block, 'U') || 'a')
-    const vFallback = JSON.stringify(operandName(block, 'V') || 'b')
-    const uColorExpr = operandColorExpr(block, 'U', 'operandA')
-    const vColorExpr = operandColorExpr(block, 'V', 'operandB')
+    const uFallback = JSON.stringify(inputs.uLabel ?? (operandName(block, 'U') || 'a'))
+    const vFallback = JSON.stringify(inputs.vLabel ?? (operandName(block, 'V') || 'b'))
+    const uColorExpr = inputs.uColor ?? operandColorExpr(block, 'U', 'operandA')
+    const vColorExpr = inputs.vColor ?? operandColorExpr(block, 'V', 'operandB')
 
     const code = `(function(){
     const uVal = ${u};
@@ -464,5 +468,4 @@ export function initVectorArithmeticBlock() {
   })()`
 
     return [code, Order.FUNCTION_CALL]
-  }
 }

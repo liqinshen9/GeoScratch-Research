@@ -372,12 +372,12 @@ describe('exercise 5 (point to plane)', () => {
     expect(mod.evaluate({ objects: [], workspace }).steps.pointP).toBe(false)
   })
 
-  it.each([[0, -1.5, 0], [-3, 0, 0], [1, -3, 2], [-5, 0, 2]])('accepts the manually entered Q1 (%s, %s, %s) on the plane', (x, y, z) => {
+  it.each([[0, -1.5, 0], [-3, 0, 0], [1, -3, 2]])('accepts the manually entered Q1 (%s, %s, %s) on the plane', (x, y, z) => {
     const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(x, y, z)]) })
     expect(result.steps.pointQ).toBe(true)
   })
 
-  it.each([[0, 0, 0], [-9, 8, 7], [1, -3, 2.001], [Infinity, 0, 0]])('rejects Q1 (%s, %s, %s) off the plane or invalid', (x, y, z) => {
+  it.each([[0, 0, 0], [-9, 8, 7], [1, -3, 2.03], [Infinity, 0, 0]])('rejects Q1 (%s, %s, %s) off the plane or invalid', (x, y, z) => {
     const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(x, y, z)]) })
     expect(result.steps.pointQ).toBe(false)
     expect(result.steps.difference).toBe(false)
@@ -387,6 +387,22 @@ describe('exercise 5 (point to plane)', () => {
   it('does not count the plane definition alone as a separate Q1', () => {
     const plane = fakeBlock('parametric_plane', {}, { point: point(-5, 0, 2), norm: vec3(0.5, 1, 0.5) })
     expect(mod.evaluate({ objects: [], workspace: fakeWorkspace([plane]) }).steps.pointQ).toBe(false)
+  })
+
+  it.each(['point', 'arithmetic', 'manual'])('rejects reusing A as Q1 via %s', (route) => {
+    const q = point(-5, 0, 2)
+    const difference = route === 'manual'
+      ? manualDifference([-4, 8, 5], q)
+      : fakeBlock('vector_arithmetic', { OP: 'subtract' }, { U: point(-9, 8, 7), V: q })
+    const projection = fakeBlock('vector_project', {}, { U: difference, V: normalFrom(q) })
+    const magnitude = fakeBlock('vector_magnitude', {}, { V: projection })
+    const result = mod.evaluate({
+      objects: [{ userData: { geoType: 'point_plane_distance_projection_magnitude', distance: 6.94 } }],
+      workspace: fakeWorkspace(route === 'point' ? [q] : [magnitude]),
+    })
+    expect(result.steps.pointQ).toBe(false)
+    expect(result.steps.difference).toBe(false)
+    expect(result.passed).toBe(false)
   })
 
   it('uses the manually entered Q1 in the subtraction and normal rather than an unrelated on-plane point', () => {
@@ -408,6 +424,70 @@ describe('exercise 5 (point to plane)', () => {
     expect(result.steps.difference).toBe(false)
     expect(result.steps.projection).toBe(false)
     expect(result.passed).toBe(false)
+  })
+
+  function manualDifference(values, origin) {
+    return fakeBlock('linalg_vec3', { X: values[0], Y: values[1], Z: values[2] }, origin ? { ORIGIN: origin } : {})
+  }
+
+  it('accepts the rounded Q1 and manually calculated displacement in the new screenshot', () => {
+    const difference = manualDifference([-15.92, 10.09, 12.75], point(6.92, -2.09, -5.75))
+    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(-9, 8, 7), difference]) })
+    expect(result.steps.pointQ).toBe(true)
+    expect(result.steps.difference).toBe(true)
+  })
+
+  it('explains incorrect manual components without referring to A when Q1 is valid', () => {
+    const difference = manualDifference([-15, 10.09, 12.75], point(6.92, -2.09, -5.75))
+    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(-9, 8, 7), difference]) })
+    expect(result.steps.difference).toBe(false)
+    expect(result.feedback.difference.message).toContain('components')
+    expect(result.feedback.difference.detail).toContain('-15.92, 10.09, 12.75')
+  })
+
+  it('accepts the exact manually calculated vector and origin shown in the participant photo', () => {
+    const difference = manualDifference([1.6, 2.39, 10.62], point(-10.6, 5.61, -3.62))
+    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(-9, 8, 7), difference]) })
+    expect(result.steps).toMatchObject({ pointP: true, pointQ: true, difference: true, normalFromQ: false, projection: false, distance: false })
+    expect(result.feedback.difference.message).not.toContain('Add a Vector Arithmetic')
+    expect(result.passed).toBe(false)
+  })
+
+  it('accepts a displacement rounded to two decimals for a valid Q1', () => {
+    const difference = manualDifference([-10.23, 11.11, 5.01], point(1.234, -3.112, 1.99))
+    expect(mod.evaluate({ objects: [], workspace: fakeWorkspace([point(-9, 8, 7), difference]) }).steps.difference).toBe(true)
+  })
+
+  it.each([
+    [[-1.6, -2.39, -10.62], [-10.6, 5.61, -3.62]], // Q1 - P, reversed
+    [[1.6, 2.39, 10.64], [-10.6, 5.61, -3.62]], // incorrect component
+    [[-9, 8, 7], [0, 0, 0]], // ends at P, but Q1 is off the plane
+    [[0, -1.5, 0], [0, -1.5, 0]], // Q1 itself, rather than P - Q1
+    [[0, 1, 0], [0, -1.5, 0]], // participant's incorrect attempt
+    [[Infinity, 9.5, 7], [0, -1.5, 0]],
+  ])('rejects an incorrect manual displacement %j at origin %j', (values, origin) => {
+    const difference = manualDifference(values, point(...origin))
+    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(-9, 8, 7), point(0, -1.5, 0), difference]) })
+    expect(result.steps.difference).toBe(false)
+    expect(result.passed).toBe(false)
+  })
+
+  it('requires an explicit Point origin for a manually entered displacement', () => {
+    for (const origin of [null, vec3(0, -1.5, 0)]) {
+      const difference = manualDifference([-9, 9.5, 7], origin)
+      expect(mod.evaluate({ objects: [], workspace: fakeWorkspace([point(-9, 8, 7), point(0, -1.5, 0), difference]) }).steps.difference).toBe(false)
+    }
+  })
+
+  it('uses the manual displacement Q1 for downstream projection and normal checks', () => {
+    const difference = manualDifference([1.6, 2.39, 10.62], point(-10.6, 5.61, -3.62))
+    const normal = normalFrom(point(-10.6, 5.61, -3.62))
+    const projection = fakeBlock('vector_project', {}, { U: difference, V: normal })
+    const magnitude = fakeBlock('vector_magnitude', {}, { V: projection })
+    const result = mod.evaluate({ objects: [{ userData: { geoType: 'scalar_arithmetic_result', value: 8.5 / Math.sqrt(1.5) } }],
+      workspace: fakeWorkspace([point(0, -1.5, 0), point(-9, 8, 7), magnitude]) })
+    expect(result.steps).toMatchObject({ difference: true, normalFromQ: true, projection: true, distance: true })
+    expect(result.passed).toBe(true)
   })
 
   it('completes step 5 when the normal starts at the recorded Q1 coordinates', () => {

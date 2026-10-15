@@ -2,7 +2,9 @@ import * as Blockly from 'blockly/core'
 import { BLOCK_STYLES } from '../blockColours'
 import { javascriptGenerator, Order } from 'blockly/javascript'
 import { forInstance } from '@/store/colorSystem'
-import { isEffectivelyStandalone } from '@/utils/sceneHelpers'
+import { isEffectivelyStandalone, vector3FromBlock } from '@/utils/sceneHelpers'
+import { isPointPlaneManualDifference } from '@/utils/pointPlaneManualDifference'
+import { vectorArithmeticCode } from '../linalgOperators/vectorArithmetic'
 
 let REGISTERED = false
 
@@ -105,8 +107,26 @@ export function initVec3Block() {
       ? javascriptGenerator.valueToCode(block, 'ORIGIN', Order.FUNCTION_CALL)
       : ''
 
-    return [
-      `(function(){
+    let manualScene = null
+    const originBlock = block.getInputTargetBlock('ORIGIN')
+    if (originBlock?.type === 'linalg_point'
+      && isPointPlaneManualDifference(vector3FromBlock(block), vector3FromBlock(originBlock))) {
+      // Render the learner's valid manual displacement with the same generator
+      // as P - Q1. This also supplies the metadata used by projection/playback.
+      const point = (code, label, id) => `(function(){const p = ${code};
+        p.userData = { ...(p.userData || {}), geoType: 'linalg_point_vector',
+          label: ${JSON.stringify(label)}, srcBlockId: ${JSON.stringify(id)} }; return p;})()`
+      manualScene = vectorArithmeticCode(block, javascriptGenerator, {
+        op: 'subtract',
+        u: point('new THREE.Vector3(-9, 8, 7)', 'P', block.id),
+        v: point(originCode, 'Q1', originBlock.id),
+        uLabel: 'P', vLabel: 'Q1',
+        uColor: `window.GeoScratchColors.forRole('operandA')`,
+        vColor: `window.GeoScratchColors.forRole('operandB')`,
+      })[0]
+    }
+
+    const genericCode = `(function(){
       const vec = new THREE.Vector3(${coords});
       const originValue = ${originConnected ? originCode || 'null' : 'null'};
       const origin = originValue?.isVector3 ? originValue.clone() : new THREE.Vector3(0, 0, 0);
@@ -192,9 +212,10 @@ export function initVec3Block() {
       // name up when it wants to show it.
       vec.userData = { ...(vec.userData || {}), srcBlockId: ${blockId} };
       return vec;
-    })()`,
-      Order.FUNCTION_CALL,
-    ]
+    })()`
+    return [manualScene
+      ? `(String(window.__geoScratchRuntimeMode || '').endsWith('point-plane-distance') ? ${manualScene} : ${genericCode})`
+      : genericCode, Order.FUNCTION_CALL]
   }
 
   //Linalg primitives

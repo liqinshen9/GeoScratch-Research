@@ -37,6 +37,132 @@ afterEach(() => {
 })
 
 describe('named saved constructions', () => {
+  it('reuses the displayed Q1 label when its rounded coordinates are copied into a manual vector', () => {
+    Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(pointPlane.solutionXml), workspace)
+    generateAndRun(workspace)
+    const displayedQ = workspace.getBlocksByType('geo_show_point_on_object', false)[0]
+    const sampledPoint = window.threeObjStore[displayedQ.id].userData.point
+    const coordinates = sampledPoint.toArray().map((value) => Number(value.toFixed(2)))
+    const difference = workspace.getBlocksByType('vector_arithmetic', false)[0]
+    displayedQ.unplug()
+    difference.getInputTargetBlock('U').unplug()
+    difference.dispose()
+    const manual = workspace.newBlock('linalg_vec3')
+    const q = workspace.newBlock('linalg_point')
+    for (const [index, field] of ['X', 'Y', 'Z'].entries()) {
+      q.setFieldValue(String(coordinates[index]), field)
+      manual.setFieldValue(String([-9, 8, 7][index] - coordinates[index]), field)
+    }
+    manual.getInput('ORIGIN').connection.connect(q.outputConnection)
+    // As in the screenshot, the displacement is a standalone vector.
+    generateAndRun(workspace)
+    expect(errors).not.toHaveBeenCalled()
+    const original = window.threeObjStore[displayedQ.id]
+    const originalLabels = original.userData.labels
+    let objects = pointPlane.decorateObjects(Object.values(window.threeObjStore), workspace)
+    objects = pointPlane.decorateObjects(objects, workspace)
+    const qLabels = []
+    objects.forEach((object) => object.traverse((child) => {
+      qLabels.push(...getLabelsForObject(child).filter((label) => label.anchor === 'q'))
+    }))
+    expect(qLabels).toHaveLength(1)
+    expect(original.userData.labels).toBe(originalLabels)
+    expect(objects).toContain(original)
+    expect(getLabelVisibilityKeysForObject(original)).toHaveLength(1)
+    expect(objects.some((object) => object.userData.geoType === 'exercise_point_q')).toBe(false)
+    expect(pointPlane.evaluate({ objects, workspace }).steps.difference).toBe(true)
+  })
+  it('accepts the manually calculated displacement from the photo through the full distance computation', () => {
+    Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(pointPlane.solutionXml), workspace)
+    const displayedQ = workspace.getBlocksByType('geo_show_point_on_object', false)[0]
+    displayedQ.getInputTargetBlock('OBJECT').unplug()
+    displayedQ.dispose()
+    const difference = workspace.getBlocksByType('vector_arithmetic', false)[0]
+    difference.getInputTargetBlock('U').unplug()
+    difference.dispose()
+    const makeQ = () => {
+      const q = workspace.newBlock('linalg_point')
+      q.setFieldValue('-10.6', 'X'); q.setFieldValue('5.61', 'Y'); q.setFieldValue('-3.62', 'Z')
+      return q
+    }
+    const manual = workspace.newBlock('linalg_vec3')
+    manual.setFieldValue('1.6', 'X'); manual.setFieldValue('2.39', 'Y'); manual.setFieldValue('10.62', 'Z')
+    manual.getInput('ORIGIN').connection.connect(makeQ().outputConnection)
+    const projection = workspace.getBlocksByType('vector_project', false)[0]
+    projection.getInput('U').connection.connect(manual.outputConnection)
+    projection.getInputTargetBlock('V').getInput('ORIGIN').connection.connect(makeQ().outputConnection)
+    generateAndRun(workspace)
+    expect(errors).not.toHaveBeenCalled()
+    const result = pointPlane.evaluate({ objects: Object.values(window.threeObjStore), workspace })
+    expect(result.steps.difference).toBe(true)
+    expect(Object.values(result.steps).every(Boolean)).toBe(true)
+    expect(result.passed).toBe(true)
+    let objects = pointPlane.decorateObjects(Object.values(window.threeObjStore), workspace)
+    const labelsFor = (id, anchor) => {
+      const labels = []
+      objects.forEach((object) => object.traverse((child) => {
+        if (child.userData.srcBlockId === id) {
+          labels.push(...(child.userData.labels ?? []).filter((label) => label.anchor === anchor))
+        }
+      }))
+      return labels
+    }
+    expect(labelsFor(projection.id, 'uTip')).toEqual([expect.objectContaining({ name: 'P − Q1' })])
+    manual.unplug()
+    generateAndRun(workspace)
+    objects = pointPlane.decorateObjects(Object.values(window.threeObjStore), workspace)
+    // Repeated decoration must retain the name even after Q1 has its label.
+    objects = pointPlane.decorateObjects(objects, workspace)
+    expect(labelsFor(manual.id, 'tip')).toEqual([expect.objectContaining({ name: 'P − Q1' })])
+  })
+  it.each([false, true])('renders the same construction and playback for manual P - Q1 (copy displayed Q: %s)', (keepDisplayedQ) => {
+    const options = { runtimeMode: 'userstudy-Li-preview-point-plane-distance' }
+    Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(pointPlane.solutionXml), workspace)
+    generateAndRun(workspace, options)
+    const displayedQ = workspace.getBlocksByType('geo_show_point_on_object', false)[0]
+    const coordinates = keepDisplayedQ
+      ? window.threeObjStore[displayedQ.id].userData.point.toArray().map((n) => Number(n.toFixed(2)))
+      : [4.64, -10.73, 13.82]
+    const makeQ = () => {
+      const q = workspace.newBlock('linalg_point')
+      for (const [index, field] of ['X', 'Y', 'Z'].entries()) q.setFieldValue(String(coordinates[index]), field)
+      return q
+    }
+    const difference = workspace.getBlocksByType('vector_arithmetic', false)[0]
+    displayedQ.unplug()
+    if (!keepDisplayedQ) {
+      displayedQ.getInputTargetBlock('OBJECT').unplug()
+      displayedQ.dispose()
+    }
+    difference.getInputTargetBlock('U').unplug()
+    difference.dispose()
+    const manual = workspace.newBlock('linalg_vec3')
+    for (const [index, field] of ['X', 'Y', 'Z'].entries()) {
+      manual.setFieldValue(String([-9, 8, 7][index] - coordinates[index]), field)
+    }
+    manual.getInput('ORIGIN').connection.connect(makeQ().outputConnection)
+    const projection = workspace.getBlocksByType('vector_project', false)[0]
+    projection.getInput('U').connection.connect(manual.outputConnection)
+    projection.getInputTargetBlock('V').getInput('ORIGIN').connection.connect(makeQ().outputConnection)
+    generateAndRun(workspace, options)
+    expect(errors).not.toHaveBeenCalled()
+    const registry = new BlockRegistry()
+    registry.reconcile(Object.values(window.threeObjStore))
+    const objects = pointPlane.decorateObjects(registry.list().map((entry) => entry.obj), workspace)
+    const distance = objects.find((object) => object.userData.geoType === 'point_plane_distance_projection_magnitude')
+    expect(distance).toBeTruthy()
+    expect(window.threeObjStore[projection.id].userData.labels).toEqual([
+      expect.objectContaining({ text: 'n' }),
+    ])
+    const differenceObject = window.threeObjStore[manual.id]
+    expect(differenceObject.userData.labels).toEqual([expect.objectContaining({ text: 'P − Q1' })])
+    const animation = objects.find((object) => typeof object.userData.animateSteps === 'function')
+    expect(animation).toBeTruthy()
+    for (const progress of [0, 0.3, 0.6, 1]) {
+      animation.userData.animateSteps(progress)
+      expect(pointPlane.evaluate({ objects, workspace }).passed).toBe(true)
+    }
+  })
   it('calculates the full point-plane distance with a manually entered Q1', () => {
     Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(pointPlane.solutionXml), workspace)
     const displayedQ = workspace.getBlocksByType('geo_show_point_on_object', false)[0]
