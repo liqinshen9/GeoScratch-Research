@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app'
 import { initializeAuth, indexedDBLocalPersistence, browserPopupRedirectResolver, signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore, doc, setDoc, getDoc, getDocs, collection, collectionGroup, query, where, updateDoc, serverTimestamp } from 'firebase/firestore/lite'
+import { decodeInteractionChunk, encodeInteractionChunk, expandInteractionSnapshots } from '../session/interactionCodec'
 
 export const STUDY_STAGES = Object.freeze([
   'demographics', 'lecture-exercise-1', 'lecture-exercise-2', 'condition-1',
@@ -84,11 +85,34 @@ export async function saveFirebaseStudyRecord(session, stageId, data) {
   })
 }
 
-export async function saveFirebaseStudyRecovery(session, snapshot) {
+export async function saveFirebaseStudyRecovery(session, snapshot, uploadId = crypto.randomUUID()) {
   const { db, uid } = await connectStudyFirebase()
   if (session.path[1] !== uid) throw new Error('This study session belongs to a different participant.')
-  await setDoc(doc(db, ...session.path, 'recovery', 'current'), { snapshot, savedAt: serverTimestamp() })
-  await saveParticipantSummary(db, uid, session.path[3], snapshot.researchId)
+  let stored = snapshot
+  if (new TextEncoder().encode(JSON.stringify(snapshot)).length > 200000) {
+    const packed = JSON.stringify(encodeInteractionChunk([snapshot]))
+    stored = { researchId: snapshot.researchId, phase: snapshot.phase, studyOrder: snapshot.studyOrder ?? null,
+      ...(snapshot.uploadStatus ? { uploadStatus: snapshot.uploadStatus } : {}) }
+    if (packed.length <= 400000) stored.encodedSnapshot = JSON.parse(packed)
+    else {
+      const chunks = packed.match(/[\s\S]{1,65000}/gu)
+      const payloadId = `recovery-${uploadId}`
+      await Promise.all(chunks.map((text, index) => setDoc(doc(db, ...session.path, 'interactionPayloads', `${payloadId}-${index}`), {
+        eventId: payloadId, index, text,
+      })))
+      stored.snapshotPayload = { payloadId, count: chunks.length }
+    }
+  }
+  await setDoc(doc(db, ...session.path, 'recovery', 'current'), { snapshot: stored, savedAt: serverTimestamp() })
+}
+
+async function decodeRecoverySnapshot(db, path, snapshot) {
+  if (snapshot?.encodedSnapshot) return decodeInteractionChunk(snapshot.encodedSnapshot)[0]
+  if (!snapshot?.snapshotPayload) return snapshot
+  const { payloadId, count } = snapshot.snapshotPayload
+  const parts = await Promise.all(Array.from({ length: count }, (_, index) => getDoc(doc(db, ...path, 'interactionPayloads', `${payloadId}-${index}`))))
+  if (parts.some((part) => !part.exists())) throw new Error('The recovery checkpoint is incomplete.')
+  return decodeInteractionChunk(JSON.parse(parts.map((part) => part.data().text).join('')))[0]
 }
 
 export async function saveFirebaseStudyInteraction(session, event) {
@@ -117,17 +141,24 @@ export async function saveFirebaseStudyInteraction(session, event) {
 async function readInteractionHistory(db, path) {
   const documents = await getDocs(collection(db, ...path, 'interactions'))
   const manifests = documents.docs.map((item) => item.data())
+  const recovery = await getDoc(doc(db, ...path, 'recovery', 'current'))
+  const expectedChunks = recovery?.exists() ? recovery.data().snapshot?.uploadStatus?.uploadedChunks : null
+  if (expectedChunks && Object.keys(expectedChunks).some((id) => !manifests.some((item) => item.eventId === id))) {
+    throw new Error('Some acknowledged interaction chunks are missing. The history is incomplete.')
+  }
   const chunked = manifests.some((item) => item.payloadChunks)
   const parts = chunked ? await getDocs(collection(db, ...path, 'interactionPayloads')) : null
   const chunks = new Map(parts?.docs.map((item) => [item.id, item.data().text]) ?? [])
-  return manifests.map((item) => {
+  const events = manifests.flatMap((item) => {
     const json = item.dataJson ?? Array.from({ length: item.payloadChunks }, (_, index) => {
       const part = chunks.get(`${item.eventId}-${index}`)
       if (part === undefined) throw new Error('An interaction snapshot is incomplete. Retry the download.')
       return part
     }).join('')
-    return JSON.parse(json)
+    const payload = JSON.parse(json)
+    return payload.type === 'interaction_chunk' ? decodeInteractionChunk(payload) : [payload]
   }).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.streamId.localeCompare(b.streamId) || a.sequence - b.sequence)
+  return expandInteractionSnapshots(events)
 }
 
 export async function readFirebaseStudyInteractions(session, asResearcher = false) {
@@ -171,7 +202,7 @@ export async function recoverFirebaseStudy(researchId, asResearcher = false) {
   const session = matches.docs[0]
   const current = await getDoc(doc(db, session.ref.path, 'recovery', 'current'))
   const records = await getDocs(collection(db, session.ref.path, 'records'))
-  return { snapshot: current.exists() ? current.data().snapshot : null,
+  return { snapshot: current.exists() ? await decodeRecoverySnapshot(db, session.ref.path.split('/'), current.data().snapshot) : null,
     records: records.docs.map((item) => item.data()),
     firebaseSession: { path: session.ref.path.split('/') }, studyOrder: session.data().studyOrder }
 }

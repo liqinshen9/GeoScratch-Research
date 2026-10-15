@@ -1,131 +1,86 @@
 // @vitest-environment jsdom
+import 'fake-indexeddb/auto'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import useFirebaseStudySync from './useFirebaseStudySync'
-import { createFirebaseStudySession, saveFirebaseStudyRecord, updateFirebaseStudyOrder } from './studyFirebase'
-
-vi.mock('./studyFirebase', () => ({ createFirebaseStudySession: vi.fn(), saveFirebaseStudyRecord: vi.fn(), updateFirebaseStudyOrder: vi.fn(), saveFirebaseStudyRecovery: vi.fn(async () => {}) }))
-vi.mock('../session/studyRecoveryStore', () => ({ saveStudyBackup: vi.fn(async () => {}) }))
-let root, host
-function Probe(props) {
-  const sync = useFirebaseStudySync(props)
-  props.onSync?.(sync)
-  return <button onClick={() => props.onCommit ? props.onCommit(sync) : sync.retry()}>{sync.state}:{sync.count}</button>
-}
+import * as firebase from './studyFirebase'
+import { pendingStudyUploads, readStudyBackup } from '../session/studyRecoveryStore'
+vi.mock('./studyFirebase', () => ({ createFirebaseStudySession: vi.fn(async ({ sessionId }) => ({ path: ['studyParticipants', 'owner', 'sessions', sessionId] })),
+  saveFirebaseStudyRecord: vi.fn(async () => {}), updateFirebaseStudyOrder: vi.fn(async () => {}), saveFirebaseStudyRecovery: vi.fn(async () => {}),
+  saveFirebaseStudyInteraction: vi.fn(async () => {}), readFirebaseStudyInteractions: vi.fn(async () => []) }))
+let root, host, sync, id
+function Probe(props) { sync = useFirebaseStudySync(props); return <p>{sync.state}</p> }
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
-  vi.resetAllMocks()
-  createFirebaseStudySession.mockResolvedValue({ path: ['session-a'] })
-  saveFirebaseStudyRecord.mockResolvedValue(undefined)
-  updateFirebaseStudyOrder.mockResolvedValue(undefined)
-  host = document.createElement('div'); document.body.append(host)
-  root = createRoot(host)
+  vi.clearAllMocks()
+  id = crypto.randomUUID()
+  host = document.createElement('div'); document.body.append(host); root = createRoot(host)
 })
 afterEach(() => { act(() => root.unmount()); host.remove(); vi.restoreAllMocks(); delete globalThis.IS_REACT_ACT_ENVIRONMENT })
-const render = async (props) => act(async () => { root.render(<Probe {...props} />) })
-
-it('waits for the completed questionnaire and checkpoint to be acknowledged before resolving Next', async () => {
+async function render(props = {}) {
+  await act(async () => root.render(<Probe researchId={id} records={[]} {...props} />))
+  if (props.researchId !== '') await act(async () => { await vi.waitFor(() => expect(firebase.createFirebaseStudySession).toHaveBeenCalled()) })
+}
+it('does not upload questionnaire drafts as they are edited', async () => {
+  await render({ records: [{ stageId: 'post-study', data: { status: 'draft', answer: 'typing' } }] })
+  expect(firebase.saveFirebaseStudyRecord).not.toHaveBeenCalled()
+  expect(firebase.saveFirebaseStudyRecovery).not.toHaveBeenCalled()
+})
+it('does not periodically upload ordinary interaction edits, but uploads them on an explicit flush', async () => {
+  const timers = vi.spyOn(window, 'setInterval')
+  await render()
+  await act(async () => sync.writeInteraction({ eventId: 'ordinary-edit', researchId: id,
+    exerciseId: 'point-plane-distance', conditionId: 'geoscratch', type: 'block_field_change',
+    streamId: 's', sequence: 1, occurredAt: new Date().toISOString(), oldValue: 1, newValue: 2 }))
+  expect(timers.mock.calls.some(([, interval]) => interval === 15000)).toBe(false)
+  const retry = timers.mock.calls.find(([, interval]) => interval === 5 * 60 * 1000)[0]
+  await act(async () => { retry(); await new Promise((resolve) => setTimeout(resolve, 30)) })
+  expect(firebase.saveFirebaseStudyInteraction).not.toHaveBeenCalled()
+  expect((await pendingStudyUploads(id)).some((entry) => entry.data.eventId === 'ordinary-edit')).toBe(true)
+  await act(async () => sync.flush(true))
+  expect(firebase.saveFirebaseStudyInteraction).toHaveBeenCalledOnce()
+  expect(await pendingStudyUploads(id)).toEqual([])
+})
+it('persists submitted answers before uploading and waits for the immediate attempt', async () => {
+  await render()
   let finish
-  saveFirebaseStudyRecord.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
-  const done = vi.fn()
-  const submitted = [{ stageId: 'demographics', data: { status: 'submitted', answer: '25' } }]
-  await render({ researchId: 'P1', records: [{ stageId: 'demographics', data: { status: 'draft' } }],
-    onCommit: (sync) => void sync.commit(submitted, { phase: 'order' }, null).then(done) })
-  await act(async () => host.querySelector('button').click())
-  expect(done).not.toHaveBeenCalled()
-  await act(async () => finish())
-  expect(saveFirebaseStudyRecord).toHaveBeenLastCalledWith(expect.anything(), 'demographics', submitted[0].data)
-  expect(done).toHaveBeenCalledWith(true)
+  firebase.saveFirebaseStudyRecord.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  let committed = false
+  const submitted = [{ stageId: 'post-study', data: { status: 'submitted', answer: 'My answers' } }]
+  let operation
+  await act(async () => { operation = sync.commit(submitted, { phase: 'complete' }, null).then(() => { committed = true }) })
+  await act(async () => { await vi.waitFor(() => expect(finish).toBeTypeOf('function')) })
+  expect(committed).toBe(false)
+  expect((await pendingStudyUploads(id)).some((item) => item.data.answer === 'My answers')).toBe(true)
+  await act(async () => { finish(); await operation })
+  expect(await pendingStudyUploads(id)).toEqual([])
+  expect((await readStudyBackup(id)).snapshot.phase).toBe('complete')
 })
-
-it('refuses to confirm offline Next and preserves its record for reconnect', async () => {
-  const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
-  const done = vi.fn()
-  const records = [{ stageId: 'demographics', data: { status: 'submitted' } }]
-  await render({ researchId: 'P1', records: [], onCommit: (sync) => void sync.commit(records, { phase: 'order' }, null).then(done) })
-  await act(async () => host.querySelector('button').click())
-  expect(done).toHaveBeenCalledWith(false)
-  expect(saveFirebaseStudyRecord).not.toHaveBeenCalled()
-  online.mockReturnValue(true)
-  await act(async () => window.dispatchEvent(new Event('online')))
-  expect(saveFirebaseStudyRecord).toHaveBeenCalledWith(expect.anything(), 'demographics', records[0].data)
+it('allows a locally safe submission when quota is exhausted and retries the same data later', async () => {
+  await render()
+  firebase.saveFirebaseStudyRecord.mockRejectedValueOnce({ code: 'resource-exhausted', message: 'Quota exceeded.' })
+  await act(async () => expect(await sync.commit([{ stageId: 'post-study', data: { answer: 'Must survive' } }], { phase: 'complete' }, null)).toBe(true))
+  expect((await pendingStudyUploads(id)).find((entry) => entry.kind === 'record').data.answer).toBe('Must survive')
+  expect((await readStudyBackup(id)).fullyUploaded).toBe(false)
+  await act(async () => expect(await sync.retry()).toBe(true))
+  expect(await pendingStudyUploads(id)).toEqual([])
+  expect(firebase.saveFirebaseStudyRecord.mock.calls.map(([, , data]) => data.answer)).toEqual(['Must survive', 'Must survive'])
 })
-
-it('saves demographics before study order and retries a failed upload without dropping data', async () => {
-  const props = { researchId: 'P1', records: [{ stageId: 'demographics', data: { answer: '25' } }] }
-  saveFirebaseStudyRecord.mockRejectedValueOnce({ code: 'unavailable' })
-  await render(props)
-  expect(createFirebaseStudySession).toHaveBeenCalledWith(expect.objectContaining({ researchId: 'P1', studyOrder: null }))
-  expect(host.textContent).toBe('error:0')
-  await act(async () => host.querySelector('button').click())
-  expect(host.textContent).toBe('saved:1')
-  expect(createFirebaseStudySession).toHaveBeenCalledTimes(1)
-  expect(saveFirebaseStudyRecord).toHaveBeenCalledTimes(2)
-  expect(saveFirebaseStudyRecord.mock.calls[1][2]).toEqual({ answer: '25' })
-  await render({ ...props, studyOrder: 'lecture-first' })
-  expect(saveFirebaseStudyRecord).toHaveBeenCalledTimes(2)
-  expect(updateFirebaseStudyOrder).toHaveBeenCalledWith({ path: ['session-a'] }, 'lecture-first')
-  expect(createFirebaseStudySession).toHaveBeenCalledTimes(1)
+it('keeps the original session ID on refresh and restores pending records offline', async () => {
+  await render()
+  const sessionId = (await readStudyBackup(id)).firebaseSessionId
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+  await act(async () => sync.commit([{ stageId: 'condition-1', data: { answer: 'offline answer' } }], { phase: 'post' }, null))
+  await act(async () => { root.unmount(); root = createRoot(host); root.render(<Probe researchId={id} records={[]} />) })
+  expect((await readStudyBackup(id)).firebaseSessionId).toBe(sessionId)
+  expect((await pendingStudyUploads(id)).some((entry) => entry.data.answer === 'offline answer')).toBe(true)
 })
-
-it('identifies a rejected post-study save and retries the same answers', async () => {
-  let sync
-  const data = { status: 'submitted', responses: [{ id: 'comments', answer: 'My final answer' }] }
-  saveFirebaseStudyRecord.mockRejectedValueOnce({ code: 'resource-exhausted', message: 'Quota exceeded.' })
-  await render({ researchId: 'P1', records: [{ stageId: 'post-study', data }], onSync: (value) => { sync = value } })
-  expect(sync).toMatchObject({ state: 'error', code: 'resource-exhausted', failedSave: 'post-study', errorMessage: 'Quota exceeded.' })
-  await act(async () => host.querySelector('button').click())
-  expect(saveFirebaseStudyRecord).toHaveBeenLastCalledWith(expect.anything(), 'post-study', data)
-  expect(sync.state).toBe('saved')
-})
-
-it('adds the selected order when it changes during the first demographics upload', async () => {
-  let finish
-  createFirebaseStudySession.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
-  const props = { researchId: 'P1', records: [{ stageId: 'demographics', data: { answer: '25' } }] }
-  await render(props)
-  await render({ ...props, studyOrder: 'geoscratch-first' })
-  await act(async () => finish({ path: ['session-a'] }))
-  expect(createFirebaseStudySession).toHaveBeenCalledTimes(1)
-  expect(updateFirebaseStudyOrder).toHaveBeenCalledWith({ path: ['session-a'] }, 'geoscratch-first')
-  expect(saveFirebaseStudyRecord).toHaveBeenCalledTimes(1)
-  expect(host.textContent).toBe('saved:1')
-})
-
-it('uploads the latest snapshot after an in-flight save without losing repeated submissions', async () => {
-  let finish
-  saveFirebaseStudyRecord.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
-  const props = { researchId: 'P1', studyOrder: 'lecture-first' }
-  await render({ ...props, records: [{ stageId: 'lecture-exercise-1', data: { submissions: [1] } }] })
-  await render({ ...props, records: [{ stageId: 'lecture-exercise-1', data: { submissions: [1, 2] } }] })
-  await act(async () => finish())
-  expect(saveFirebaseStudyRecord.mock.calls.map(([, , data]) => data.submissions)).toEqual([[1], [1, 2]])
-  expect(host.textContent).toBe('saved:1')
-})
-
-it('isolates a new research session from an unfinished previous session', async () => {
-  let finish
-  createFirebaseStudySession.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
-  createFirebaseStudySession.mockResolvedValue({ path: ['session-b'] })
-  const props = { studyOrder: 'geoscratch-first', records: [{ stageId: 'demographics', data: {} }] }
-  await render({ ...props, researchId: 'P1' })
-  await render({ ...props, researchId: 'P2' })
-  await act(async () => finish({ path: ['session-a'] }))
-  expect(saveFirebaseStudyRecord.mock.calls.map(([session]) => session.path[0])).toEqual(['session-b'])
-  expect(host.textContent).toBe('saved:1')
-})
-
-it('stops new writes while recording is off and resumes the same server session', async () => {
-  const props = { researchId: 'P1', records: [{ stageId: 'demographics', data: { answer: 'recorded' } }] }
-  await render(props)
-  expect(createFirebaseStudySession).toHaveBeenCalledOnce()
-  const count = saveFirebaseStudyRecord.mock.calls.length
-  await render({ ...props, researchId: '', records: [] })
-  await act(async () => host.querySelector('button').click())
-  await act(async () => window.dispatchEvent(new Event('online')))
-  expect(saveFirebaseStudyRecord).toHaveBeenCalledTimes(count)
-  await render({ ...props, records: [...props.records, { stageId: 'post-study', data: { answer: 'new recorded answer' } }] })
-  expect(createFirebaseStudySession).toHaveBeenCalledOnce()
-  expect(saveFirebaseStudyRecord).toHaveBeenLastCalledWith({ path: ['session-a'] }, 'post-study', { answer: 'new recorded answer' })
+it('does not write when recording is disabled and leaves the existing queue intact', async () => {
+  await render()
+  await render({ researchId: '' })
+  const count = firebase.saveFirebaseStudyRecord.mock.calls.length
+  await act(async () => sync.commit([{ stageId: 'post-study', data: { answer: 'preview' } }], {}, null))
+  expect(firebase.saveFirebaseStudyRecord).toHaveBeenCalledTimes(count)
+  expect(await pendingStudyUploads(id)).toEqual([])
 })

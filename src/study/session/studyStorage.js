@@ -1,4 +1,5 @@
-// Study persistence is paused until the replacement storage design is ready.
+// Legacy localStorage history stays disabled. IndexedDB owns durable recovery
+// and the upload queue without growing localStorage's small synchronous quota.
 export const STUDY_PERSISTENCE_ENABLED = false
 
 export function clearStoredStudyData(storage = window.localStorage) {

@@ -91,7 +91,7 @@ it('keeps autosaves quiet and shows saving only while Next or a submitted answer
   })
   await submitAndFinishSave('Submit lecture answer')
 })
-it('clears old study storage and completes/export the active session entirely in memory', async () => {
+it('preserves existing backups and completes/exports through the durable queue without localStorage writes', async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   useSettingsStore.getState().resetSettings()
@@ -106,7 +106,7 @@ it('clears old study storage and completes/export the active session entirely in
   document.body.append(host)
   root = createRoot(host)
   act(() => root.render(<UserStudyLiPage autoResume={false} />))
-  expect(localStorage.getItem('userstudyLi.interactions.old')).toBeNull()
+  expect(localStorage.getItem('userstudyLi.interactions.old')).toBe('old large records')
   const click = async (text) => {
     await act(async () => [...host.querySelectorAll('button')].find((node) => node.textContent === text).click())
     await vi.waitFor(async () => {
@@ -142,7 +142,7 @@ it('clears old study storage and completes/export the active session entirely in
   expect(host.querySelector('h1').textContent).toBe('Study session complete')
   await click('Download study data (ZIP)')
   expect(writes).not.toHaveBeenCalled()
-  expect(Object.keys(localStorage).some((key) => key.startsWith('userstudyLi.'))).toBe(false)
+  expect(Object.keys(localStorage).filter((key) => key.startsWith('userstudyLi.'))).toEqual(['userstudyLi.interactions.old'])
   const blob = URL.createObjectURL.mock.calls.at(-1)[0]
   const bytes = await new Promise((resolve, reject) => {
     const reader = new FileReader()

@@ -5,11 +5,12 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import * as Blockly from 'blockly/core'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
 import useFirestoreInteractionTracking from './useFirestoreInteractionTracking'
+import { expandInteractionSnapshots } from '../session/interactionCodec'
 
 let root, host, workspace, tracking
 const context = { phase: 'geoscratch', conditionId: 'geoscratch', exerciseId: 'cube-point-pivot-rotation', studyOrder: 'lecture-first' }
-function Probe({ writeInteraction, current = context, researchId = 'DIRECT1' }) {
-  tracking = useFirestoreInteractionTracking({ researchId, context: current, writeInteraction })
+function Probe({ writeInteraction, current = context, researchId = 'DIRECT1', flushUploads }) {
+  tracking = useFirestoreInteractionTracking({ researchId, context: current, writeInteraction, flushUploads })
   return <p>{tracking.error}</p>
 }
 beforeEach(() => {
@@ -25,7 +26,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   delete globalThis.IS_REACT_ACT_ENVIRONMENT
 })
-it('sends each interaction immediately with step context and nested snapshots without storing browser history', async () => {
+it('passes events to the durable writer with step context and boundary snapshots', async () => {
   const store = vi.spyOn(Storage.prototype, 'setItem')
   const write = vi.fn(async () => {})
   await act(async () => root.render(<Probe writeInteraction={write} />))
@@ -42,7 +43,7 @@ it('sends each interaction immediately with step context and nested snapshots wi
 })
 it('reports rejected database writes and does not report unsaved history as acknowledged', async () => {
   await act(async () => root.render(<Probe writeInteraction={vi.fn(async () => { throw new Error('offline') })} />))
-  expect(host.textContent).toContain('could not be saved to Firebase')
+  expect(host.textContent).toContain('could not back up an interaction')
   expect(await tracking.flush()).toBe(false)
 })
 
@@ -73,4 +74,29 @@ it('waits for outstanding database acknowledgments and excludes tutorial and lec
   await act(async () => acknowledge())
   await waiting
   expect(done).toHaveBeenCalledWith(true)
+})
+it('stores exact workspace changes between checkpoints and retains repeated Check attempts and their feedback', async () => {
+  const write = vi.fn(async () => {}), flushUploads = vi.fn(async () => true)
+  await act(async () => root.render(<Probe writeInteraction={write} flushUploads={flushUploads} />))
+  const before = { format: 'blockly-json', state: { blocks: [{ id: 'rotation', fields: { AXIS: 'X', DEGREES: 90 } }] } }
+  const after = { format: 'blockly-json', state: { blocks: [{ id: 'rotation', fields: { AXIS: 'Y', DEGREES: 90 } }] } }
+  await act(async () => {
+    window.dispatchEvent(new CustomEvent('geoscratch:study-event', { detail: { type: 'workspace_snapshot', details: { reason: 'initial', snapshot: before }, context } }))
+    window.dispatchEvent(new CustomEvent('geoscratch:study-event', { detail: { type: 'block_field_change', details: { blockId: 'rotation', fieldName: 'AXIS', oldValue: 'X', newValue: 'Y' }, context } }))
+    window.dispatchEvent(new CustomEvent('geoscratch:study-event', { detail: { type: 'workspace_snapshot', details: { reason: 'after-change', snapshot: after }, context } }))
+    const evaluation = { ...context, steps: { rotate: false }, feedback: { rotate: { message: 'Use Y instead of X' } }, passed: false }
+    window.dispatchEvent(new CustomEvent('geoscratch:exercise-evaluation', { detail: evaluation }))
+    window.dispatchEvent(new CustomEvent('geoscratch:exercise-evaluation', { detail: evaluation }))
+    tracking.capture('step_check', { stepKey: 'rotate' })
+    tracking.capture('step_check', { stepKey: 'rotate' })
+  })
+  const events = write.mock.calls.map(([event]) => event)
+  const patch = events.find((event) => event.type === 'workspace_patch')
+  expect(patch).not.toHaveProperty('snapshot')
+  expect(expandInteractionSnapshots(events).find((event) => event.eventId === patch.eventId).snapshot).toEqual(after)
+  expect(events.filter((event) => event.type === 'exercise_evaluation')).toHaveLength(1)
+  expect(events.filter((event) => event.type === 'step_check')).toHaveLength(2)
+  expect(events.find((event) => event.type === 'block_field_change')).toMatchObject({ fieldName: 'AXIS', oldValue: 'X', newValue: 'Y' })
+  expect(events.find((event) => event.type === 'step_check').evaluation.feedback.rotate.message).toBe('Use Y instead of X')
+  expect(flushUploads).toHaveBeenCalledWith(true)
 })

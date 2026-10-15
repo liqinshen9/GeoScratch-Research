@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import 'fake-indexeddb/auto'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
@@ -16,8 +17,10 @@ vi.mock('@/study/firebase/studyFirebase', () => ({
   saveFirebaseStudyInteraction: vi.fn(async () => {}), readFirebaseStudyInteractions: vi.fn(async () => []),
   recoverFirebaseStudy: vi.fn(async () => null), signInResearcher: vi.fn(),
 }))
-vi.mock('@/study/session/studyRecoveryStore', () => ({ readActiveStudySession: vi.fn(async () => null),
-  saveStudyBackup: vi.fn(async () => {}), setActiveStudySession: vi.fn(async () => {}) }))
+vi.mock('@/study/session/studyRecoveryStore', async (original) => {
+  const actual = await original()
+  return Object.fromEntries(Object.entries(actual).map(([key, value]) => [key, vi.fn(value)]))
+})
 vi.mock('@/pages/ExercisePage', () => ({ default: ({ exerciseId, exerciseTimer, onPreviousExercise, onNextExercise, onStepAction }) => <>
   <h1>{exerciseId}</h1>{exerciseTimer}
   <button onClick={() => onStepAction({ action: 'check', stepKey: 'pointQ' })}>Check preview block</button>
@@ -91,8 +94,11 @@ it('stops questionnaire collection and server writes when the setting is switche
   useSettingsStore.getState().updateSetting('userStudyMode', true)
   await act(async () => root.render(<UserStudyLiPage autoResume={false} />))
   await click('Start new session')
-  expect(firebase.createFirebaseStudySession).toHaveBeenCalledOnce()
   const researchId = host.querySelector('input[readonly]').value
+  await act(async () => { await vi.waitFor(async () => {
+    expect((await recovery.readStudyBackup(researchId))?.fullyUploaded).toBe(true)
+  }) })
+  expect(firebase.createFirebaseStudySession).toHaveBeenCalledOnce()
   await act(async () => useSettingsStore.getState().updateSetting('userStudyMode', false))
   const savedBefore = JSON.stringify(readSessionQuestionnaires(researchId))
   vi.clearAllMocks()

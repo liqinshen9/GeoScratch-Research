@@ -63,7 +63,7 @@ export function buildSessionFiles({ researchId, studyOrder, questionnaires = [],
       ...(exerciseId === TRIAL ? { tutorial: tutorialSummary ?? { status: 'not-recorded', skipSource: null } } : {}),
       ...(geoscratchResults.find((item) => item.exerciseId === exerciseId)
         ? { result: geoscratchResults.find((item) => item.exerciseId === exerciseId) } : {}),
-      ...(interactions?.length ? { interactionSchemaVersion: 2, interactions } : {}),
+      ...(interactions?.length ? { interactionSchemaVersion: interactions.some((event) => event.schemaVersion === 3) ? 3 : 2, interactions } : {}),
     },
       { conditionId: 'geoscratch', conditionNumber, exerciseId })
   }

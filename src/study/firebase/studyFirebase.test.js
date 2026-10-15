@@ -19,6 +19,7 @@ vi.mock('firebase/auth', () => ({
 vi.mock('firebase/firestore/lite', () => ({
   getFirestore: vi.fn(() => ({})), doc: firebase.doc, setDoc: firebase.setDoc, updateDoc: firebase.updateDoc, getDoc: firebase.getDoc,
   getDocs: firebase.getDocs, collection: (_db, ...path) => path,
+  collectionGroup: (_db, name) => name, query: (...parts) => parts, where: (...parts) => parts,
   serverTimestamp: () => 'server-time',
 }))
 
@@ -39,6 +40,37 @@ beforeEach(() => {
 })
 
 describe('Firebase study setup', () => {
+  it('reads packed interaction documents as the original events and detects missing acknowledged chunks', async () => {
+    const { encodeInteractionChunk } = await import('../session/interactionCodec')
+    const { createFirebaseStudySession, saveFirebaseStudyInteraction, readFirebaseStudyInteractions } = await import('./studyFirebase')
+    const session = await createFirebaseStudySession({ researchId: 'PACKED' })
+    const event = { eventId: 'original-1', researchId: 'PACKED', exerciseId: 'point-plane-distance', type: 'block_create',
+      occurredAt: '2026-10-16T00:00:00Z', streamId: 's', sequence: 1, state: { type: 'linalg_point', fields: { X: 7 } } }
+    const chunk = { eventId: 'chunk-1', researchId: 'PACKED', exerciseId: event.exerciseId, type: 'interaction_chunk',
+      occurredAt: event.occurredAt, streamId: 's', sequence: 1, ...encodeInteractionChunk([event]) }
+    await saveFirebaseStudyInteraction(session, chunk)
+    const manifest = firebase.setDoc.mock.calls.at(-1)[1]
+    firebase.getDocs.mockResolvedValueOnce({ docs: [{ data: () => manifest }] })
+    firebase.getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ snapshot: { uploadStatus: { uploadedChunks: { 'chunk-1': 1 } } } }) })
+    expect(await readFirebaseStudyInteractions(session)).toEqual([event])
+    firebase.getDocs.mockResolvedValueOnce({ docs: [] })
+    firebase.getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ snapshot: { uploadStatus: { uploadedChunks: { 'chunk-1': 1 } } } }) })
+    await expect(readFirebaseStudyInteractions(session)).rejects.toThrow('missing')
+  })
+  it('compresses a large recovery workspace and restores it without changing questionnaire or condition fields', async () => {
+    const { createFirebaseStudySession, saveFirebaseStudyRecovery, recoverFirebaseStudy } = await import('./studyFirebase')
+    const session = await createFirebaseStudySession({ researchId: 'LARGE' })
+    const snapshot = { researchId: 'LARGE', phase: 'post', studyOrder: 'lecture-first',
+      questionnaires: [{ questionnaireId: 'condition-1', answer: 'preserved' }], savedXml: { exercise: '<xml>'.repeat(80000) } }
+    await saveFirebaseStudyRecovery(session, snapshot, 'stable-version')
+    const stored = firebase.setDoc.mock.calls.at(-1)[1].snapshot
+    expect(stored.encodedSnapshot.encoding).toBe('gzip-base64-v1')
+    expect(JSON.stringify(stored).length).toBeLessThan(10000)
+    firebase.getDocs.mockResolvedValueOnce({ empty: false, size: 1, docs: [{ ref: { path: session.path.join('/') }, data: () => ({ studyOrder: 'lecture-first' }) }] })
+    firebase.getDocs.mockResolvedValueOnce({ docs: [] })
+    firebase.getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ snapshot: stored }) })
+    expect((await recoverFirebaseStudy('LARGE')).snapshot).toEqual(snapshot)
+  })
   it('writes complete interaction JSON directly under the original session and prevents another participant writing it', async () => {
     const { createFirebaseStudySession, saveFirebaseStudyInteraction } = await import('./studyFirebase')
     const session = await createFirebaseStudySession({ researchId: 'DIRECT1' })
@@ -105,14 +137,15 @@ describe('Firebase study setup', () => {
     await expect(createFirebaseStudySession({ researchId: 'P01', studyOrder: 'geoscratch-first' }))
       .rejects.toThrow('permission-denied')
   })
-  it('refreshes the participant label for an existing session and each recovery save', async () => {
+  it('preserves the participant label without rewriting it for each recovery save', async () => {
     const { createFirebaseStudySession, saveFirebaseStudyRecovery } = await import('./studyFirebase')
     firebase.getDoc.mockResolvedValueOnce({ exists: () => true })
     const session = await createFirebaseStudySession({ researchId: 'RECENT', sessionId: 'existing-session' })
     expect(firebase.setDoc).toHaveBeenCalledTimes(1)
     await saveFirebaseStudyRecovery(session, { researchId: 'RECENT', phase: 'complete' })
-    expect(firebase.setDoc).toHaveBeenLastCalledWith(['studyParticipants', 'participant-a'], {
-      latestResearchId: 'RECENT', latestSessionId: 'existing-session', lastSavedAt: 'server-time',
+    expect(firebase.setDoc).toHaveBeenCalledTimes(2)
+    expect(firebase.setDoc).toHaveBeenLastCalledWith([...session.path, 'recovery', 'current'], {
+      snapshot: { researchId: 'RECENT', phase: 'complete' }, savedAt: 'server-time',
     })
     firebase.auth.currentUser = { uid: 'participant-b' }
     await expect(saveFirebaseStudyRecovery(session, { researchId: 'RECENT' })).rejects.toThrow('different participant')

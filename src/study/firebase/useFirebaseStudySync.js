@@ -1,115 +1,100 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createFirebaseStudySession, saveFirebaseStudyRecord, updateFirebaseStudyOrder, saveFirebaseStudyRecovery, saveFirebaseStudyInteraction, readFirebaseStudyInteractions } from './studyFirebase'
-import { saveStudyBackup } from '../session/studyRecoveryStore'
+import { readFirebaseStudyInteractions } from './studyFirebase'
+import { flushStudyUploads } from './studyUploadQueue'
+import { enqueueStudyUpload, listStudyBackups, pendingStudyUploads, readStudyBackup, saveStudyBackup, waitForStudyWrites } from '../session/studyRecoveryStore'
+import { decodeInteractionChunk, expandInteractionSnapshots } from '../session/interactionCodec'
 
-// Keep a compact latest record per stage until the server acknowledges it.
-// A failure leaves the latest record available for retry while this tab stays open.
-export default function useFirebaseStudySync({ researchId, studyOrder, records, recoverySnapshot, initialSession }) {
-  const active = useRef(null)
-  const recording = useRef(researchId)
-  recording.current = researchId
+export default function useFirebaseStudySync({ researchId, studyOrder, records, initialSession }) {
+  const current = useRef({})
+  current.current = { researchId, studyOrder, records }
+  const identities = useRef(new Map())
+  const recorded = useRef(new Map())
   const [status, setStatus] = useState({ state: 'idle', count: 0 })
-  const serialized = JSON.stringify([...records, ...(recoverySnapshot ? [{ stageId: '@recovery', data: recoverySnapshot }] : [])])
-  const flush = useCallback((session) => {
-    if (!recording.current || recording.current !== session.researchId) return Promise.resolve(false)
-    const orderPending = () => session.remote && session.studyOrder && session.remoteOrder !== session.studyOrder
-    if (session.running) return session.operation
-    if (!session.pending.size && !orderPending()) return Promise.resolve(true)
-    if (navigator.onLine === false) { setStatus({ state: 'offline', count: session.saved.size }); return Promise.resolve(false) }
-    session.running = true
-    session.operation = (async () => {
-    const publish = (value) => { if (active.current === session) setStatus(value) }
-    let saving = 'study session'
-    publish({ state: 'saving', count: session.saved.size })
-    try {
-      if (!session.remote) {
-        const order = session.studyOrder ?? null
-        await saveStudyBackup(session.researchId, { firebaseSessionId: session.sessionId }).catch(() => {})
-        session.remote = await createFirebaseStudySession({ researchId: session.researchId, studyOrder: order, sessionId: session.sessionId })
-        session.remoteOrder = order
-        await saveStudyBackup(session.researchId, { firebaseSession: { ...session.remote, studyOrder: order } }).catch(() => {})
-      }
-      while (session.pending.size || orderPending()) {
-        if (recording.current !== session.researchId) return false
-        if (orderPending()) {
-          saving = 'study order'
-          const order = session.studyOrder
-          await updateFirebaseStudyOrder(session.remote, order)
-          session.remoteOrder = order
-          await saveStudyBackup(session.researchId, { firebaseSession: { ...session.remote, studyOrder: order } }).catch(() => {})
-          continue
-        }
-        const [stageId, json] = session.pending.entries().next().value
-        saving = stageId === '@recovery' ? 'study checkpoint' : stageId
-        if (stageId === '@recovery') await saveFirebaseStudyRecovery(session.remote, JSON.parse(json))
-        else { await saveFirebaseStudyRecord(session.remote, stageId, JSON.parse(json)); session.saved.set(stageId, json) }
-        if (session.pending.get(stageId) === json) session.pending.delete(stageId)
-      }
-      publish({ state: 'saved', count: session.saved.size })
-      return true
-    } catch (error) {
-      publish({ state: 'error', count: session.saved.size, code: error.code ?? 'connection-error',
-        failedSave: saving, errorMessage: error.message ?? 'Firebase did not confirm the save.' })
-      return false
-    } finally { session.running = false }
-    })()
-    return session.operation
-  }, [])
-
+  const ensureLocal = useCallback(async (id) => {
+    let identity = identities.current.get(id)
+    if (!identity) {
+      identity = (async () => {
+        const existing = await readStudyBackup(id)
+        await saveStudyBackup(id, { firebaseSessionId: existing?.firebaseSessionId
+          ?? initialSession?.path?.at(-1) ?? initialSession?.sessionId ?? crypto.randomUUID(),
+          ...(existing?.firebaseSession ? {} : initialSession?.path ? { firebaseSession: initialSession } : {}) })
+      })()
+      identities.current.set(id, identity)
+      identity.catch(() => identities.current.delete(id))
+    }
+    await identity
+  }, [initialSession])
+  const upload = useCallback(async (force = false) => {
+    const id = current.current.researchId
+    if (!id) return false
+    await ensureLocal(id)
+    const enabled = () => current.current.researchId === id
+    if (enabled()) setStatus((previous) => ({ ...previous, state: 'saving' }))
+    const saved = await flushStudyUploads(id, { force, enabled })
+    const local = await readStudyBackup(id)
+    if (enabled()) setStatus({ state: saved ? 'saved' : navigator.onLine === false ? 'offline' : 'pending',
+      count: (current.current.records ?? []).length, ...local?.uploadError })
+    return saved
+  }, [ensureLocal])
   useEffect(() => {
-    // Keep the existing server identity while recording is switched off so
-    // re-enabling it cannot create a duplicate session for the same research ID.
     if (!researchId) { setStatus({ state: 'idle', count: 0 }); return }
-    if (active.current?.researchId !== researchId) {
-      active.current = { researchId, studyOrder, pending: new Map(), saved: new Map(),
-        remote: initialSession?.path ? initialSession : null, remoteOrder: initialSession?.studyOrder ?? null,
-        sessionId: initialSession?.path?.at(-1) ?? initialSession?.sessionId ?? crypto.randomUUID(), running: false }
-      setStatus({ state: 'idle', count: 0 })
+    const retry = async (failedOnly = false) => {
+      try {
+        for (const session of await listStudyBackups()) {
+          if (!current.current.researchId) break
+          const pending = await pendingStudyUploads(session.researchId)
+          // Ordinary edits stay local until a deliberate upload boundary.
+          // The slow timer only revisits failed/incomplete upload attempts.
+          if (failedOnly && !session.uploadError && !pending.some((entry) => entry.kind !== 'event')) continue
+          if (session.researchId === current.current.researchId) await upload()
+          else if (pending.length) await flushStudyUploads(session.researchId, { enabled: () => Boolean(current.current.researchId) })
+        }
+      } catch (error) { setStatus({ state: 'local-error', errorMessage: error.message }) }
     }
-    const session = active.current
-    session.studyOrder = studyOrder
-    for (const { stageId, data } of JSON.parse(serialized)) {
-      const json = JSON.stringify(data)
-      if (session.saved.get(stageId) !== json) session.pending.set(stageId, json)
-    }
-    void flush(session)
-  }, [researchId, studyOrder, serialized, flush, initialSession])
-
-  useEffect(() => {
-    const retry = () => { if (active.current) void flush(active.current) }
-    const offline = () => setStatus((previous) => ({ ...previous, state: 'offline' }))
-    window.addEventListener('online', retry)
-    window.addEventListener('offline', offline)
-    const timer = window.setInterval(retry, 15000)
-    return () => { window.clearInterval(timer); window.removeEventListener('online', retry); window.removeEventListener('offline', offline) }
-  }, [flush])
-
-  const retry = useCallback(() => { if (active.current) void flush(active.current) }, [flush])
+    void ensureLocal(researchId).then(() => retry()).catch((error) => setStatus({ state: 'local-error', errorMessage: error.message }))
+    const reconnect = () => { void retry() }
+    window.addEventListener('online', reconnect)
+    const timer = window.setInterval(() => { void retry(true) }, 5 * 60 * 1000)
+    return () => { window.removeEventListener('online', reconnect); window.clearInterval(timer) }
+  }, [researchId, ensureLocal, upload])
   const commit = useCallback(async (nextRecords, snapshot, order) => {
-    const session = active.current
-    if (!session) return false
-    if (order != null) session.studyOrder = order
-    for (const { stageId, data } of [...nextRecords, { stageId: '@recovery', data: snapshot }]) {
-      const json = JSON.stringify(data)
-      if (stageId === '@recovery' || session.saved.get(stageId) !== json) session.pending.set(stageId, json)
+    const id = current.current.researchId
+    if (!id) return false
+    await ensureLocal(id)
+    await waitForStudyWrites(id)
+    await saveStudyBackup(id, { snapshot: { ...snapshot, researchId: id, studyOrder: order ?? snapshot.studyOrder },
+      lastUploadSnapshot: { ...snapshot, researchId: id, studyOrder: order ?? snapshot.studyOrder } })
+    for (const { stageId, data } of nextRecords) {
+      const key = `${id}:${stageId}`, json = JSON.stringify(data)
+      if (recorded.current.get(key) === json) continue
+      await enqueueStudyUpload(id, 'record', stageId, data)
+      recorded.current.set(key, json)
     }
+    await enqueueStudyUpload(id, 'recovery', 'current', { ...snapshot, researchId: id, studyOrder: order ?? snapshot.studyOrder })
     let timer
     try {
-      return await Promise.race([flush(session), new Promise((resolve) => { timer = window.setTimeout(() => resolve(false), 12000) })])
+      await Promise.race([upload(true), new Promise((resolve) => { timer = window.setTimeout(resolve, 12000) })])
     } finally { window.clearTimeout(timer) }
-  }, [flush])
+    // A durable local commit permits progress even if the cloud is unavailable.
+    return true
+  }, [ensureLocal, upload])
   const writeInteraction = useCallback(async (event) => {
-    const session = active.current
-    if (!recording.current || recording.current !== event.researchId) return
-    if (!session || session.researchId !== event.researchId) throw new Error('The interaction has no active study session.')
-    if (!session.remote) await flush(session)
-    if (!session.remote) throw new Error('The study session could not be saved to Firebase.')
-    await saveFirebaseStudyInteraction(session.remote, event)
-  }, [flush])
+    const id = current.current.researchId
+    if (!id || event.researchId !== id) return
+    await ensureLocal(id)
+    await enqueueStudyUpload(id, 'event', event.eventId, event)
+  }, [ensureLocal])
   const readInteractions = useCallback(async () => {
-    const session = active.current
-    if (!session?.remote) return []
-    return readFirebaseStudyInteractions(session.remote)
+    const id = current.current.researchId
+    const local = await readStudyBackup(id)
+    const pending = await pendingStudyUploads(id)
+    const events = pending.flatMap((entry) => entry.kind === 'event' ? [entry.data]
+      : entry.kind === 'chunk' ? decodeInteractionChunk(entry.data) : [])
+    let uploaded = []
+    if (local?.firebaseSession?.path) uploaded = await readFirebaseStudyInteractions(local.firebaseSession)
+    const merged = [...new Map([...uploaded, ...events].map((event) => [event.eventId, event])).values()]
+      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.sequence - b.sequence)
+    return expandInteractionSnapshots(merged)
   }, [])
-  return { ...status, retry, commit, writeInteraction, readInteractions }
+  return { ...status, retry: () => upload(true), flush: upload, commit, writeInteraction, readInteractions }
 }

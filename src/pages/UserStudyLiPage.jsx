@@ -8,7 +8,7 @@ import { generateResearchId } from '@/study/session/researchId'
 import { markQuestionnaireSubmitted, readSessionQuestionnaires, restoreSessionQuestionnaires } from '@/study/session/questionnaireDrafts'
 import { buildSessionFiles, downloadSessionZip } from '@/study/session/sessionExport'
 import useLectureExerciseTiming from '@/study/session/useLectureExerciseTiming'
-import { clearStoredStudyData, STUDY_PERSISTENCE_ENABLED } from '@/study/session/studyStorage'
+import { STUDY_PERSISTENCE_ENABLED } from '@/study/session/studyStorage'
 import useFirebaseStudySync from '@/study/firebase/useFirebaseStudySync'
 import { firebaseSessionRecords } from '@/study/firebase/sessionRecords'
 import { beginExerciseResult, countExerciseAction, finishExerciseResult } from '@/study/session/compactExerciseResults'
@@ -23,6 +23,7 @@ import PostStudyQuestionnaire from './userStudyLi/PostStudyQuestionnaire'
 import TutorialWelcome from './userStudyLi/TutorialWelcome'
 import SessionTutorial from './userStudyLi/SessionTutorial'
 import StudyOrderSelection from './userStudyLi/StudyOrderSelection'
+import ResearcherPendingUploads from './userStudyLi/ResearcherPendingUploads'
 import LectureSlides from './userStudyLi/LectureSlides'
 import { nextStudyPhase, conditionDetails, studySequence } from './userStudyLi/studyFlow'
 import './UserStudyLiPage.css'
@@ -111,12 +112,6 @@ function styleStudyPoints(objects) {
 
 export default function UserStudyLiPage({ researcherOnly = false, autoResume = true }) {
   useThemeSync()
-  useEffect(() => {
-    try { clearStoredStudyData() } catch { /* Memory-only study still works if browser storage is unavailable. */ }
-    const store = useWorkspaceStore.getState()
-    const oldStudyIds = Object.keys(store.savedXml ?? {}).filter((id) => id.startsWith('userstudy-Li-'))
-    if (oldStudyIds.length) store.clearSavedWorkspaces?.(oldStudyIds)
-  }, [])
   const userStudyMode = useSettingsStore((state) => state.settings.userStudyMode)
   const [exerciseIndex, setExerciseIndex] = useState(0)
   const [phase, setPhase] = useState('new')
@@ -134,10 +129,10 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
   const [lectureDrafts, setLectureDrafts] = useState({})
   const [lectureExerciseNumber, setLectureExerciseNumber] = useState(1)
   const [initialFirebaseSession, setInitialFirebaseSession] = useState(null)
-  const [cloudRecoverySnapshot, setCloudRecoverySnapshot] = useState(null)
   const [recoveryId, setRecoveryId] = useState('')
   const [recoveryMessage, setRecoveryMessage] = useState('')
   const [researcherAccount, setResearcherAccount] = useState(null)
+  const [researchUploadStatus, setResearchUploadStatus] = useState(null)
   const [recovering, setRecovering] = useState(false)
   const [recoveredReadOnly, setRecoveredReadOnly] = useState(false)
   const [loadingSession, setLoadingSession] = useState(autoResume && !researcherOnly && userStudyMode)
@@ -149,8 +144,10 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
   const { start: startLectureTiming, finish: finishLectureTiming, elapsed: lectureElapsed, read: readLectureTimings, restore: restoreLectureTimings, storageError: timingStorageError } = useLectureExerciseTiming(researchId)
   useEffect(() => {
     const changed = (event) => { if (event.detail.researchId === researchId) setDraftRevision((revision) => revision + 1) }
+    const failed = (event) => { if (event.detail.researchId === researchId) setExportError('This device could not back up your answers. Keep this tab open and contact the researcher.') }
     window.addEventListener('geoscratch:questionnaire-changed', changed)
-    return () => window.removeEventListener('geoscratch:questionnaire-changed', changed)
+    window.addEventListener('geoscratch:study-local-error', failed)
+    return () => { window.removeEventListener('geoscratch:questionnaire-changed', changed); window.removeEventListener('geoscratch:study-local-error', failed) }
   }, [researchId])
   const startLectureExercise = useCallback((exerciseId) => {
     if (!userStudyMode) return
@@ -183,9 +180,10 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
 
   const firebaseSync = useFirebaseStudySync({ researchId: recordingId, studyOrder,
     records: recordingId ? firebaseSessionRecords({ ...sessionPayload(), lectureTimingRevision, draftRevision }) : [],
-    recoverySnapshot: recordingId ? cloudRecoverySnapshot : null, initialSession: initialFirebaseSession })
+    initialSession: initialFirebaseSession })
   const interactionTracking = useFirestoreInteractionTracking({
     researchId: recordingId, writeInteraction: firebaseSync.writeInteraction,
+    flushUploads: firebaseSync.flush,
     context: { phase, researchId, conditionId: phase === 'geoscratch' && tutorialPhase === 'done' ? 'geoscratch' : null,
       exerciseId: phase === 'geoscratch' && tutorialPhase === 'done' ? exerciseId : null, studyOrder },
   })
@@ -229,7 +227,7 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
     lectureExerciseResponses: lectureResponses, lectureExerciseTimings: readLectureTimings(),
     geoscratchResults, activeGeoResult: activeGeoResult.current, questionnaires: readSessionQuestionnaires(researchId),
     lectureDrafts, lectureExerciseNumber, userStudyMode, geoRevision,
-  }, setCloudRecoverySnapshot)
+  })
 
   const ensureGeoResult = useCallback(() => {
     if (!userStudyMode || phase !== 'geoscratch' || tutorialPhase !== 'done') return null
@@ -275,8 +273,8 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
     finishLectureTiming(id, 'timeout')
     setLectureTimingRevision((revision) => revision + 1)
     setTimeUpMessage(`Time is up for lecture exercise ${id === 'cube-point-pivot-rotation' ? '1' : '2'}. You have moved to the next question.`)
-    if (id === 'cube-point-pivot-rotation') setLectureExerciseNumber(2)
-    else setPhase(nextStudyPhase(studyOrder, 'lecture'))
+    void transitionTo(id === 'cube-point-pivot-rotation' ? { lectureExerciseNumber: 2 }
+      : { phase: nextStudyPhase(studyOrder, 'lecture') }, { lectureExerciseTimings: readLectureTimings() })
   }
 
   function checkpoint(overrides = {}) {
@@ -295,6 +293,8 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
       if (target.exerciseIndex != null) setExerciseIndex(target.exerciseIndex)
       if (target.studyOrder != null) setStudyOrder(target.studyOrder)
       if (target.lectureExerciseNumber != null) setLectureExerciseNumber(target.lectureExerciseNumber)
+      if (target.tutorialPhase != null) setTutorialPhase(target.tutorialPhase)
+      if (target.tutorialSummary != null) setTutorialSummary(target.tutorialSummary)
     }
     if (!userStudyMode || !firebaseSync.commit) { apply(); return true }
     if (transitionLock.current) return false
@@ -308,10 +308,10 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
       try {
         await saveStudyBackup(researchId, { snapshot: current })
         if (epoch !== transitionEpoch.current) return false
+        if (phase === 'geoscratch' && !(await interactionTracking.flush())) throw new Error('This device could not back up the exercise. Keep this tab open and contact the researcher.')
         const saved = await firebaseSync.commit(firebaseSessionRecords(next), next, next.studyOrder)
-        if (phase === 'geoscratch' && !(await interactionTracking.flush())) throw new Error('Some interaction records were not acknowledged by Firebase. Check the connection before continuing.')
         if (epoch !== transitionEpoch.current) return false
-        if (!saved) throw new Error('Firebase has not confirmed this save. Check the internet connection, then press Next again. You have not moved to the next stage.')
+        if (!saved) throw new Error('This device could not back up your results. Keep this tab open and contact the researcher.')
         await saveStudyBackup(researchId, { snapshot: next })
         apply()
         return true
@@ -367,7 +367,6 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
     setGeoscratchResults([])
     activeGeoResult.current = null
     setInitialFirebaseSession(null)
-    setCloudRecoverySnapshot(null)
     setLectureDrafts({})
     setLectureExerciseNumber(1)
     setRecoveredReadOnly(false)
@@ -395,10 +394,11 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
   }
 
   function expireGeoScratch() {
-    finishGeoScratch('timeout')
+    const result = finishGeoScratch('timeout')
     setTimeUpMessage(`Time is up for ${exercise.heading || (exerciseIndex === 1 ? 'the cube rotation exercise' : 'the point-to-plane distance exercise')}. You have moved to the next question.`)
-    if (exerciseIndex < STUDY_EXERCISES.length - 1) setExerciseIndex(exerciseIndex + 1)
-    else advanceCondition()
+    void transitionTo(exerciseIndex < STUDY_EXERCISES.length - 1 ? { exerciseIndex: exerciseIndex + 1 }
+      : { phase: nextStudyPhase(studyOrder, phase) },
+    { geoscratchResults: result ? [...geoscratchResults.filter((item) => item.exerciseId !== result.exerciseId), result] : geoscratchResults })
   }
 
   function saveLectureAnswer(response) {
@@ -427,18 +427,15 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
   }
 
   function followTutorial() {
-    if (userStudyMode) setTutorialSummary({ status: 'started', skipSource: null })
-    setTutorialPhase('active')
+    void transitionTo({ tutorialPhase: 'active', ...(userStudyMode ? { tutorialSummary: { status: 'started', skipSource: null } } : {}) })
   }
 
   function skipTutorial(source) {
-    if (userStudyMode) setTutorialSummary({ status: tutorialPhase === 'active' ? 'skipped-after-start' : 'skipped', skipSource: source })
-    setTutorialPhase('done')
+    void transitionTo({ tutorialPhase: 'done', ...(userStudyMode ? { tutorialSummary: { status: tutorialPhase === 'active' ? 'skipped-after-start' : 'skipped', skipSource: source } } : {}) })
   }
 
   function finishTutorial() {
-    if (userStudyMode) setTutorialSummary({ status: 'completed', skipSource: null })
-    setTutorialPhase('done')
+    void transitionTo({ tutorialPhase: 'done', ...(userStudyMode ? { tutorialSummary: { status: 'completed', skipSource: null } } : {}) })
   }
 
   async function recoverSession(automaticRecord) {
@@ -452,9 +449,9 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
     setRecoveryMessage('Looking for your saved study…')
     try {
       const local = automaticRecord ?? null
-      const remote = await recoverFirebaseStudy(id, !automaticRecord)
+      const remote = local?.snapshot ? null : await recoverFirebaseStudy(id, !automaticRecord)
       if (automaticRecord && !studyModeRef.current) return
-      const snapshot = remote ? (automaticRecord ? remote.snapshot : recoveredSession(remote, id)) : null
+      const snapshot = local?.snapshot ?? (remote ? (automaticRecord ? remote.snapshot : recoveredSession(remote, id)) : null)
       if (!snapshot) throw new Error('No recoverable session was found for this research ID. For another computer, sign in as an authorized researcher first.')
       restoreSessionQuestionnaires(id, snapshot.questionnaires)
       restoreLectureTimings(id, snapshot.lectureExerciseTimings)
@@ -475,7 +472,7 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
       setInitialFirebaseSession(local?.firebaseSession ?? remote?.firebaseSession ?? { sessionId: local?.firebaseSessionId })
       const readOnly = !automaticRecord
       setRecoveredReadOnly(readOnly)
-      setCloudRecoverySnapshot(readOnly ? null : snapshot)
+      setResearchUploadStatus(readOnly ? snapshot.uploadStatus ?? null : null)
       setPhase(readOnly ? 'recovered' : snapshot.phase)
       if (!readOnly && snapshot.userStudyMode != null) useSettingsStore.getState().updateSetting('userStudyMode', snapshot.userStudyMode)
       setRecoveryMessage('')
@@ -519,7 +516,7 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
             A research ID is generated when the session starts and is used to link the
             questionnaires and exercise answers.
           </p>
-          <p>{userStudyMode ? 'Your study data is saved to Firebase. An internet connection is required. Next waits for confirmation before continuing.' : 'Developer preview: no timers, data recording, or ZIP downloads. You can move freely between steps.'}</p>
+          <p>{userStudyMode ? 'Your study progress is saved automatically. Please use the same browser if you need to return to this session.' : 'Developer preview: no timers, data recording, or ZIP downloads. You can move freely between steps.'}</p>
           {recoveryMessage && <p role="alert">{recoveryMessage}</p>}
           {recoveryMessage && <button type="button" onClick={() => { void readActiveStudySession().then((session) => session && recoverSession(session)) }}>Retry opening saved study</button>}
           {storageWarning && <p role="alert">{storageWarning}</p>}
@@ -536,6 +533,7 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
           <button type="button" onClick={researcherSignIn}>Researcher sign-in</button>
           {recoveryMessage && <p role="status">{recoveryMessage}</p>}
           {researcherAccount && <p>Researcher account: {researcherAccount.email} · Account ID: {researcherAccount.uid}</p>}
+          {researcherAccount?.authorized && <ResearcherPendingUploads />}
           </>}
         </section>
       </div>
@@ -615,6 +613,9 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
           <h1 id="session-complete-title">{phase === 'recovered' ? 'Recovered study results' : 'Study session complete'}</h1>
           <p>Research ID: {researchId}</p>
           {phase === 'recovered' && <p>These are the latest results uploaded from the participant’s device. You can download the study ZIP below.</p>}
+          {researcherOnly && phase === 'recovered' && <p>{researchUploadStatus
+            ? `${researchUploadStatus.allAcknowledged ? 'All expected records acknowledged' : 'Upload incomplete'} · ${researchUploadStatus.uploadedEventCount} interaction events acknowledged · ${researchUploadStatus.pendingItems} pending items at last checkpoint`
+            : 'This older session has no upload completeness receipt.'}</p>}
           {userStudyMode || researcherOnly
             ? <p>The study ZIP contains a folder named by your research ID, with separate JSON files in study order. If the automatic download did not appear, use the button below.</p>
             : <p>Developer preview complete. No study data was recorded or downloaded.</p>}
@@ -624,7 +625,7 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
             <button
               className="user-study-li-new-session-action"
               type="button"
-              disabled={userStudyMode && !recoveredReadOnly && (interactionTracking.pending || Boolean(interactionTracking.error) || recoveryUploadPending || firebaseSync.state === 'saving' || firebaseSync.state === 'error' || firebaseSync.state === 'offline')}
+              disabled={userStudyMode && !recoveredReadOnly && (interactionTracking.pending || Boolean(interactionTracking.error) || recoveryUploadPending)}
               onClick={researcherOnly ? () => { exportEpoch.current += 1; setResearchId(''); setPhase('new') } : startNewSession}
             >
               {researcherOnly ? 'Look up another study' : 'Start new session'}
@@ -701,18 +702,11 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
       <button type="button" disabled={previewIndex === previewSteps.length - 1} onClick={() => navigatePreview(1)}>Next preview step</button>
     </nav>}
     {transitionBusy && <div className="user-study-li-saving-overlay" role="status" data-saving-transition="true">Saving your results before continuing…</div>}
-    {userStudyMode && researchId && !recoveredReadOnly && !transitionBusy && (interactionTracking.error || firebaseSync.state === 'error' || firebaseSync.state === 'offline' || localBackupError || transitionError) && <div className={`user-study-li-cloud-status is-${firebaseSync.state}${phase === 'geoscratch' ? '' : ' is-form'}`} role="alert">
-      {firebaseSync.state === 'error' ? 'Your answers could not be uploaded. Keep this tab open and retry.'
-        : firebaseSync.state === 'offline' ? 'Offline. Keep this tab open and reconnect. Study data and interactions are saved to Firebase, without browser backups.'
-        : null}
-      {firebaseSync.state === 'error' && firebaseSync.code && <div>
-        <p>Save error: {firebaseSync.code}{firebaseSync.failedSave ? ` (${firebaseSync.failedSave})` : ''}</p>
-        <p>{firebaseSync.errorMessage}</p>
-      </div>}
+    {userStudyMode && researchId && !recoveredReadOnly && !transitionBusy && (interactionTracking.error || firebaseSync.state === 'local-error' || localBackupError || transitionError) && <div className="user-study-li-cloud-status is-form" role="alert">
+      {firebaseSync.state === 'local-error' && <p>This device could not back up your results. Keep this tab open and contact the researcher.</p>}
       {localBackupError && <p role="alert">{localBackupError}</p>}
       {interactionTracking.error && <p role="alert">{interactionTracking.error}</p>}
       {transitionError && <p role="alert">{transitionError}</p>}
-      {firebaseSync.state === 'error' && <button type="button" onClick={firebaseSync.retry}>Retry Firebase save</button>}
     </div>}
     <div className={developerPreview ? 'user-study-li-preview-content' : undefined} style={developerPreview ? undefined : { display: 'contents' }} inert={transitionBusy || undefined}>{renderStudyContent()}</div>
   </div>

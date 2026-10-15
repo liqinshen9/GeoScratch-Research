@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { STUDY_PERSISTENCE_ENABLED } from './studyStorage'
+import { saveQuestionnaireBackup } from './studyRecoveryStore'
 
 const PREFIX = 'userstudyLi.questionnaireDrafts.'
 const keyFor = (researchId, questionnaireId) => `${PREFIX}${researchId}.${questionnaireId}`
@@ -17,6 +18,9 @@ function readRecord(key) {
 function writeRecord(key, record) {
   if (!STUDY_PERSISTENCE_ENABLED) {
     unsaved.set(key, record)
+    void saveQuestionnaireBackup(record.researchId, record).catch(() => {
+      window.dispatchEvent(new CustomEvent('geoscratch:study-local-error', { detail: { researchId: record.researchId } }))
+    })
     window.dispatchEvent(new CustomEvent('geoscratch:questionnaire-changed', { detail: { researchId: record.researchId } }))
     return true
   }
