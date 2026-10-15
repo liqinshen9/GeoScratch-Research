@@ -18,6 +18,7 @@ import setupChangeListener from '@/utils/setupChangeListener'
 import initWorkSpace from '@/components/BlocksCanvas/core/Workspace'
 import applyExampleXml from '@/utils/applyExampleXml'
 import { installConnectionTypeFeedback } from '@/utils/connectionTypeFeedback'
+import { installWorkspaceStudyTracking } from '@/study/session/workspaceTracking'
 import {
   applyMyBlockColours,
   isMyBlockInstance,
@@ -59,8 +60,12 @@ export function useBlocksWorkspace({
       clearObjects()
       syncScene(changedWorkspace)
     })
-    const cleanupConnectionFeedback = installConnectionTypeFeedback(ws, (message) => {
+    const studyTracking = installWorkspaceStudyTracking(ws, { runtimeId: runtimeMode,
+      isEnabled: () => useSettingsStore.getState().settings.userStudyMode,
+      getCustomBlocks: () => useWorkspaceStore.getState().userBlocks ?? [] })
+    const cleanupConnectionFeedback = installConnectionTypeFeedback(ws, (message, details) => {
       onConnectionFeedback?.(message)
+      if (message) studyTracking.warning(message, details)
     })
 
     syncScene(ws)
@@ -70,6 +75,7 @@ export function useBlocksWorkspace({
     const cleanupResize = attachResizeObserver(workspaceHostRef.current, ws)
 
     return () => {
+      studyTracking.stop()
       cleanupListener()
       cleanupConnectionFeedback()
       cleanupResize()

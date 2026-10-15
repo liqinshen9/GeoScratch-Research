@@ -28,7 +28,7 @@ function externalConnections(workspace, ids) {
   return edges
 }
 
-export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomBlocks = () => [], emit = emitStudyEvent }) {
+export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomBlocks = () => [], emit = emitStudyEvent, isEnabled = () => true }) {
   const context = workspaceStudyContext(runtimeId)
   if (!context) return { stop() {}, warning() {}, snapshot() {} }
   let stopped = false
@@ -36,9 +36,10 @@ export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomB
   let dragNumber = 0
   let dragTimer = null
   const types = new Map(workspace.getAllBlocks(false).map((block) => [block.id, block.type]))
-  const emitEvent = (type, details) => emit(type, { workspaceId: workspace.id, ...details }, context)
+  const emitEvent = (type, details) => { if (isEnabled()) emit(type, { workspaceId: workspace.id, ...details }, context) }
   const blockInfo = (id) => ({ blockId: id, blockType: workspace.getBlockById(id)?.type ?? types.get(id) ?? null })
   function snapshot(reason) {
+    if (!isEnabled()) return
     emitEvent('workspace_snapshot', { reason, snapshot: workspaceSnapshot(workspace, getCustomBlocks()) })
   }
   function settleDrag() {
@@ -70,7 +71,7 @@ export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomB
   const trackedUndo = workspace.undo
 
   function listener(event) {
-    if (stopped || (event.workspaceId && event.workspaceId !== workspace.id)) return
+    if (stopped || !isEnabled() || (event.workspaceId && event.workspaceId !== workspace.id)) return
     const group = event.group || null
     const details = { group, recordUndo: event.recordUndo, ...blockInfo(event.blockId) }
     const json = () => clone(event.toJson?.() ?? {})
@@ -114,6 +115,7 @@ export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomB
       Blockly.Events.VIEWPORT_CHANGE, Blockly.Events.VAR_CREATE, Blockly.Events.VAR_DELETE, Blockly.Events.VAR_RENAME].includes(event.type)) {
       emitEvent('blockly_event', { event: json() })
     }
+    if ([Blockly.Events.BLOCK_CREATE, Blockly.Events.BLOCK_DELETE, Blockly.Events.BLOCK_CHANGE, Blockly.Events.BLOCK_MOVE].includes(event.type)) snapshot(`after-${event.type}`)
   }
   workspace.addChangeListener(listener)
   const initialTimer = setTimeout(() => { if (!stopped) snapshot('initial') }, 0)
@@ -127,6 +129,7 @@ export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomB
     warning(message, connectionDetails) {
       if (drag) drag.warningShown = true
       emitEvent('connection_warning', { message, dragId: drag?.id ?? null, ...connectionDetails })
+      snapshot('connection-warning')
     },
     stop() {
       if (stopped) return

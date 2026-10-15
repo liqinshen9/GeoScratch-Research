@@ -78,8 +78,20 @@ function evaluate({ objects, workspace }) {
   const target = objects.find((o) => o?.userData?.geoType === 'object_with_point' && (!pairBlock || o.userData.srcBlockId === pairBlock.id))
   const cube = target?.children.find((o) => o.userData?.geoType === 'geo_cube')
   const marker = target?.children.find((o) => o.userData?.geoType === 'attached_corner_point')
-  target?.updateMatrixWorld(true)
-  const poseIsCorrect = Boolean(cube && marker) && vectorMatches(cube.getWorldPosition(new THREE.Vector3()), CENTRE) && vectorMatches(marker.getWorldPosition(new THREE.Vector3()), new THREE.Vector3(2, 2, 2)) && rotationMatches(target, 'Y', 90)
+  target?.updateWorldMatrix(true, true)
+  // Playback changes the visible pose in place without rebuilding the scene.
+  // Grade the pipeline's baked endpoint so a render during playback cannot
+  // leave Next disabled after the animation finishes.
+  const endpoint = target?.userData?.transformAnim
+  const finalMatrix = endpoint ? new THREE.Matrix4().compose(endpoint.endPos, endpoint.endQuat, endpoint.endScale) : null
+  if (finalMatrix && target.parent) finalMatrix.premultiply(target.parent.matrixWorld)
+  const finalPosition = (child) => finalMatrix
+    ? child.position.clone().applyMatrix4(finalMatrix)
+    : child.getWorldPosition(new THREE.Vector3())
+  const poseIsCorrect = Boolean(cube && marker)
+    && vectorMatches(finalPosition(cube), CENTRE)
+    && vectorMatches(finalPosition(marker), new THREE.Vector3(2, 2, 2))
+    && rotationMatches(endpoint ? { quaternion: endpoint.endQuat } : target, 'Y', 90)
   const steps = {
     pipeline: Boolean(pipeline),
     toOrigin: translateMatches(chain[0], -1),

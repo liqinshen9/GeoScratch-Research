@@ -2,8 +2,16 @@
 
 The Firebase SDK and study screens connect to `geoscratch-50162`. All questionnaire
 answers (including drafts), lecture answers/timings, and compact GeoScratch results
-are saved. The latest progress/workspace recovery snapshot is backed up in IndexedDB
-and Firebase. ZIP downloads remain available.
+are saved in Firestore. Detailed interactions for the trial and both GeoScratch
+exercises write directly to Firestore, without browser history or an offline queue.
+Only session references and authentication identity are kept on the device.
+
+Recording applies only when **Settings → User study mode** is on. With the toggle
+off, the study is a developer preview: no Firebase requests, questionnaire drafts,
+answer history, interaction logs, session recovery references, timers, or ZIP
+downloads are created. Previous/Next preview controls allow browsing without
+submitting answers. The separate researcher results page remains available for
+authorized retrieval of existing participant data.
 
 ## Console setup
 
@@ -44,19 +52,27 @@ server creation time. Random session IDs avoid overwriting a repeated study.
 | geoscratch-trial, geoscratch-exercise-1, geoscratch-exercise-2 | Duration, pass status, completion/timeout status, Check counts per step, More help counts per step and exercise |
 | post-study | Submitted questionnaire answers |
 
-No detailed click streams or tutorial interaction logs are stored. Exercise records
-contain counts rather than event arrays. The separate `recovery/current` document
-keeps one latest snapshot, including questionnaire drafts, lecture drafts, active
-exercise counters/timing, progress, workspace XML, and My Blocks needed to resume.
-It is replaced as work changes; there is no history of workspace snapshots.
+Detailed events are under `sessions/{sessionId}/interactions/{eventId}`. Each has
+research/session/exercise IDs, a timestamp, stream/sequence, type, and complete
+JSON in `dataJson`. Oversized events use `payloadChunks` referencing bounded JSON
+parts in `interactionPayloads/{eventId}-{index}`. The manifest is written last.
+History includes creation/deletion (including nested block state), field old/new
+values, connections/disconnections, actual rejection warning messages, UI click
+areas and picked 3D objects, step checks/completions, evaluations/feedback, and
+workspace snapshots after changes and at exit/timeout. Snapshots use Blockly's
+nested JSON and include My Blocks definitions. Type-compatible connections are
+distinguished from mathematical correctness, which is recorded in evaluations
+with the corresponding workspace revision. Tutorial activity is excluded.
+The separate `recovery/current` document is the latest cloud resume checkpoint.
 
 Authentication now persists in IndexedDB so refresh retains the participant's
-identity. An IndexedDB backup (`geoscratch-study-recovery`) holds the latest session
-state by research ID, plus its stable Firebase session reference. Firestore Lite
-uploads retry when online and every 15 seconds while the study page remains open.
-If internet is unavailable, the durable device backup remains recoverable after
-refresh. New cloud sessions reuse a locally saved session ID after failed writes.
-Study answers are not restored to the old large localStorage interaction logs.
+identity. IndexedDB `geoscratch-study-recovery` now holds only the active ID and
+Firebase session references, never answers or snapshots. Refresh reads answers
+and workspace state from Firebase and requires internet. There is no retained
+in-memory interaction history; only promises for writes awaiting acknowledgment.
+An interaction write failure is visible and prevents unconfirmed manual advancement.
+Closing/refreshing offline cannot recover unacknowledged events. Summary/checkpoint
+writes retain their existing retry mechanism while the current page stays open.
 
 The participant route `/userstudy-Li` automatically restores the active session
 before showing a start screen. Refresh keeps the same research ID, answers,
@@ -65,11 +81,11 @@ a new ID. Participants have no research-ID lookup or researcher sign-in controls
 
 Questionnaire Next, lecture Next/Continue, study-order selection, and exercise Next
 wait for Firebase acknowledgment of the stage records and checkpoint before
-advancing. The current state is first backed up durably on the participant's laptop.
+advancing. GeoScratch Next also waits for outstanding interaction writes.
 If offline or the save is unconfirmed after 12 seconds, the page stays on its
 current stage, preserves the answers, and asks the participant to retry Next.
 Countdown expiry still follows the required automatic timeout navigation, with
-its result backed up and queued for upload.
+its final workspace captured synchronously before advancing and sent to Firestore.
 
 Researchers use the separate route `/study-results`: press **Researcher sign-in**,
 sign in with an authorized Google account, enter the ID, and recover a read-only
@@ -136,16 +152,26 @@ are included for unused steps. `passed` records the checker state when leaving,
 Development-mode results include `studyMode: false` and may be unpassed. Revisiting
 an exercise replaces its result with the latest visit. No tutorial clicks are saved.
 
-The floating save status reports Saving, Saved, or a failed save with Retry. The
-latest unsaved record for each stage is recoverable from the device backup. A new session
+Background saves run without a persistent status banner. Next and answer submission
+show a temporary saving overlay until the upload is acknowledged. Failed or offline
+saves and backup errors remain visible, with Retry for failed uploads. The
+latest acknowledged record for each stage is recoverable from Firebase. A new session
 cannot be started from the completion screen while uploads are pending or failed.
-ZIP downloads remain available regardless of upload success. Draft questionnaires
+ZIP downloads retrieve event history from Firestore; nested JSON histories are included
+in each corresponding GeoScratch exercise file, while Firebase summary documents stay compact.
+An internet connection is required for history downloads. Draft questionnaires
 are sent with a draft status and are distinguishable from submitted responses.
 
 Records are under **Firestore → Data → studyParticipants → participant UID →
 sessions → session ID → records**. The session document has the research ID;
-the top-level participant document is only a path container and may appear as
-a missing document in the console. Earlier trials from before this integration
+the top-level participant document shows `latestResearchId`, `latestSessionId`,
+and `lastSavedAt` for the most recently uploaded session/checkpoint. The console's
+document list still uses anonymous browser UIDs; select an entry to see its research
+ID, then open **sessions** and the matching `latestSessionId` for its records.
+One browser can have multiple sessions: the latest label does not replace their
+individual research IDs. Older entries may still appear as missing documents until
+that browser saves again. Publish the updated `firestore.rules` before using this
+summary feature. Earlier trials from before this integration
 are not automatically uploaded. Database region changes require a separate
 decision before replacing the database.
 

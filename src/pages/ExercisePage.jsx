@@ -173,12 +173,12 @@ export default function ExercisePage({
   useEffect(() => { onPassedChange?.(Boolean(passed)) }, [passed, onPassedChange])
   const studyEvaluation = JSON.stringify({ exerciseId: activeExercise, passed: Boolean(passed),
     correct: Boolean(result.correct), incorrect: Boolean(result.incorrect), steps: result.steps ?? null,
-    answer: result.answer ?? null })
+    answer: result.answer ?? null, feedback: result.feedback ?? null })
   useEffect(() => {
-    if (workspaceStudyContext(workspaceId)) {
+    if (userStudyMode && workspaceStudyContext(workspaceId)) {
       window.dispatchEvent(new CustomEvent('geoscratch:exercise-evaluation', { detail: JSON.parse(studyEvaluation) }))
     }
-  }, [workspaceId, studyEvaluation])
+  }, [workspaceId, studyEvaluation, userStudyMode])
 
   // Mirror the solve state into localStorage so the exercise browser shows
   // progress. A pass records it. It comes back off once we've seen this
@@ -190,13 +190,14 @@ export default function ExercisePage({
     sawPassThisVisit.current = false
   }, [activeExercise])
   useEffect(() => {
+    if (workspaceStudyContext(workspaceId)) return
     if (passed) {
       sawPassThisVisit.current = true
       markExerciseSolved(activeExercise)
     } else if (sawPassThisVisit.current || (isPerceptual && perceptualPicked != null)) {
       unmarkExerciseSolved(activeExercise)
     }
-  }, [passed, activeExercise, isPerceptual, perceptualPicked])
+  }, [passed, activeExercise, isPerceptual, perceptualPicked, workspaceId])
 
   const handleSelectExercise = useCallback(
     (id) => {

@@ -8,6 +8,7 @@ const firebase = vi.hoisted(() => ({
   setDoc: vi.fn(),
   updateDoc: vi.fn(),
   getDoc: vi.fn(async () => ({ exists: () => false })),
+  getDocs: vi.fn(async () => ({ docs: [] })),
   doc: vi.fn((_db, ...path) => path),
 }))
 vi.mock('firebase/app', () => ({ initializeApp: firebase.initializeApp }))
@@ -17,6 +18,7 @@ vi.mock('firebase/auth', () => ({
 }))
 vi.mock('firebase/firestore/lite', () => ({
   getFirestore: vi.fn(() => ({})), doc: firebase.doc, setDoc: firebase.setDoc, updateDoc: firebase.updateDoc, getDoc: firebase.getDoc,
+  getDocs: firebase.getDocs, collection: (_db, ...path) => path,
   serverTimestamp: () => 'server-time',
 }))
 
@@ -37,10 +39,41 @@ beforeEach(() => {
 })
 
 describe('Firebase study setup', () => {
+  it('writes complete interaction JSON directly under the original session and prevents another participant writing it', async () => {
+    const { createFirebaseStudySession, saveFirebaseStudyInteraction } = await import('./studyFirebase')
+    const session = await createFirebaseStudySession({ researchId: 'DIRECT1' })
+    const event = { eventId: 'event-1', researchId: 'DIRECT1', exerciseId: 'cube-point-pivot-rotation',
+      type: 'block_delete', occurredAt: '2026-10-15T01:00:00Z', streamId: 'stream', sequence: 1,
+      state: { type: 'rot_matrix', fields: { AXIS: 'Y', DEGREES: 90 } } }
+    await saveFirebaseStudyInteraction(session, event)
+    expect(firebase.setDoc).toHaveBeenLastCalledWith([...session.path, 'interactions', event.eventId], expect.objectContaining({ dataJson: JSON.stringify(event), sessionId: session.path[3] }))
+    firebase.auth.currentUser = { uid: 'other' }
+    await expect(saveFirebaseStudyInteraction(session, event)).rejects.toThrow('different participant')
+  })
+  it('round-trips a large Unicode workspace through bounded Firestore chunks', async () => {
+    const { createFirebaseStudySession, saveFirebaseStudyInteraction, readFirebaseStudyInteractions } = await import('./studyFirebase')
+    const session = await createFirebaseStudySession({ researchId: 'DIRECT1' })
+    firebase.setDoc.mockClear()
+    const event = { eventId: 'large-1', researchId: 'DIRECT1', exerciseId: 'point-plane-distance',
+      type: 'exercise_timeout', occurredAt: '2026-10-15T01:00:00Z', streamId: 'stream', sequence: 1,
+      snapshot: { customBlocks: [{ name: '😀'.repeat(180000) }] } }
+    await saveFirebaseStudyInteraction(session, event)
+    const calls = firebase.setDoc.mock.calls
+    const manifest = calls.at(-1)[1]
+    expect(manifest.payloadChunks).toBeGreaterThan(1)
+    const parts = calls.slice(0, -1)
+    expect(parts.every(([, part]) => new TextEncoder().encode(part.text).length <= 260000)).toBe(true)
+    firebase.getDocs.mockResolvedValueOnce({ docs: [{ data: () => manifest }] })
+    firebase.getDocs.mockResolvedValueOnce({ docs: parts.map(([path, data]) => ({ id: path.at(-1), data: () => data })) })
+    expect(await readFirebaseStudyInteractions(session)).toEqual([event])
+  })
   it('creates a session before order selection and later updates the same document', async () => {
     const { createFirebaseStudySession, updateFirebaseStudyOrder } = await import('./studyFirebase')
     const session = await createFirebaseStudySession({ researchId: 'P01' })
-    expect(firebase.setDoc).toHaveBeenLastCalledWith(session.path, expect.objectContaining({ studyOrder: null }))
+    expect(firebase.setDoc).toHaveBeenCalledWith(session.path, expect.objectContaining({ studyOrder: null }))
+    expect(firebase.setDoc).toHaveBeenLastCalledWith(['studyParticipants', 'participant-a'], {
+      latestResearchId: 'P01', latestSessionId: session.path[3], lastSavedAt: 'server-time',
+    })
     await updateFirebaseStudyOrder(session, 'geoscratch-first')
     expect(firebase.updateDoc).toHaveBeenCalledWith(session.path, { studyOrder: 'geoscratch-first' })
   })
@@ -71,5 +104,17 @@ describe('Firebase study setup', () => {
     firebase.setDoc.mockRejectedValueOnce(new Error('permission-denied'))
     await expect(createFirebaseStudySession({ researchId: 'P01', studyOrder: 'geoscratch-first' }))
       .rejects.toThrow('permission-denied')
+  })
+  it('refreshes the participant label for an existing session and each recovery save', async () => {
+    const { createFirebaseStudySession, saveFirebaseStudyRecovery } = await import('./studyFirebase')
+    firebase.getDoc.mockResolvedValueOnce({ exists: () => true })
+    const session = await createFirebaseStudySession({ researchId: 'RECENT', sessionId: 'existing-session' })
+    expect(firebase.setDoc).toHaveBeenCalledTimes(1)
+    await saveFirebaseStudyRecovery(session, { researchId: 'RECENT', phase: 'complete' })
+    expect(firebase.setDoc).toHaveBeenLastCalledWith(['studyParticipants', 'participant-a'], {
+      latestResearchId: 'RECENT', latestSessionId: 'existing-session', lastSavedAt: 'server-time',
+    })
+    firebase.auth.currentUser = { uid: 'participant-b' }
+    await expect(saveFirebaseStudyRecovery(session, { researchId: 'RECENT' })).rejects.toThrow('different participant')
   })
 })

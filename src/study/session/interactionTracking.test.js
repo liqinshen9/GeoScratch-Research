@@ -18,7 +18,7 @@ beforeEach(() => {
 afterEach(() => { tracker.stop(); vi.useRealTimers(); document.body.innerHTML = ''; window.localStorage.clear() })
 
 describe('study interaction tracking', () => {
-  it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('does not record any activity for %s', (exerciseId) => {
+  it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('records activity and timeout snapshots for %s', (exerciseId) => {
     tracker.setContext({ phase: 'geoscratch', conditionId: 'geoscratch', exerciseId })
     const before = tracker.read()
     document.querySelector('#next').click()
@@ -31,8 +31,8 @@ describe('study interaction tracking', () => {
     tracker.record('exercise_evaluation', { passed: true })
     tracker.record('exercise_timeout')
     vi.advanceTimersByTime(1500)
-    expect(tracker.read()).toEqual(before)
-    expect(tracker.read().some((entry) => entry.exerciseId === exerciseId)).toBe(false)
+    expect(tracker.read().length).toBeGreaterThan(before.length)
+    expect(tracker.read().some((entry) => entry.exerciseId === exerciseId && entry.type === 'exercise_timeout')).toBe(true)
   })
   it('identifies the actual button when its child is clicked, without reading input values', () => {
     document.querySelector('#next span').dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 20, clientY: 30, detail: 1 }))

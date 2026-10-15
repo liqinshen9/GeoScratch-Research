@@ -277,14 +277,14 @@ function buildPostResponsePayload(answers, researchId) {
   }
 }
 
-export default function PostStudyQuestionnaire({ researchId, conditionOrder, onComplete, onSave, storageWarning }) {
+export default function PostStudyQuestionnaire({ researchId, conditionOrder, onComplete, onSave, storageWarning, recordResponses = true }) {
   const acceptPostResponses = true
-  const [postAnswers, setPostAnswers] = useState(() => (readQuestionnaireDraft(researchId, 'post-study')?.rawAnswers ?? {
+  const [postAnswers, setPostAnswers] = useState(() => ((recordResponses && readQuestionnaireDraft(researchId, 'post-study')?.rawAnswers) || {
     ...makeInitialPostAnswers(researchId),
     ...(conditionOrder ? { conditionOrder } : {}),
   }))
   const [postSavedMessage, setPostSavedMessage] = useState('')
-  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId: 'post-study', answers: postAnswers, buildPayload: buildPostResponsePayload, enabled: acceptPostResponses })
+  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId: 'post-study', answers: postAnswers, buildPayload: buildPostResponsePayload, enabled: acceptPostResponses && recordResponses })
 
   function updatePostAnswer(id, value) {
     setPostAnswers((current) => ({ ...current, [id]: value }))
@@ -296,8 +296,8 @@ export default function PostStudyQuestionnaire({ researchId, conditionOrder, onC
     if (!acceptPostResponses) return
 
     const payload = buildPostResponsePayload(postAnswers, researchId)
-    onSave(payload, 'post-study', POST_RESPONSE_BACKUP_KEY)
-    setPostSavedMessage('Answers saved.')
+    if (recordResponses) onSave(payload, 'post-study', POST_RESPONSE_BACKUP_KEY)
+    setPostSavedMessage(recordResponses ? 'Answers saved.' : 'Preview only. Answers are not recorded.')
     onComplete()
   }
 

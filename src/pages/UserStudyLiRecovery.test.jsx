@@ -4,6 +4,7 @@ import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import UserStudyLiPage from './UserStudyLiPage'
+import useSettingsStore from '@/store/useSettingsStore'
 import { saveStudyBackup, setActiveStudySession } from '@/study/session/studyRecoveryStore'
 import { readQuestionnaireDraft } from '@/study/session/questionnaireDrafts'
 import { recoverFirebaseStudy, signInResearcher } from '@/study/firebase/studyFirebase'
@@ -12,7 +13,7 @@ import { downloadSessionZip } from '@/study/session/sessionExport'
 vi.mock('@/hooks/useThemeSync', () => ({ default: () => {} }))
 vi.mock('@/study/session/useStudyRecoveryBackup', () => ({ default: () => '' }))
 vi.mock('@/study/firebase/useFirebaseStudySync', () => ({ default: () => ({ state: 'saved', count: 2 }) }))
-vi.mock('@/study/firebase/studyFirebase', () => ({ recoverFirebaseStudy: vi.fn(), signInResearcher: vi.fn() }))
+vi.mock('@/study/firebase/studyFirebase', () => ({ recoverFirebaseStudy: vi.fn(), signInResearcher: vi.fn(), readFirebaseStudyInteractions: vi.fn(async () => []) }))
 vi.mock('@/store/useWorkspaceStore', () => ({ default: { getState: () => ({ savedXml: {}, setUserBlockScope: () => {}, restoreStudyWorkspace: () => {} }) } }))
 vi.mock('@/study/session/sessionExport', async (original) => ({ ...await original(), downloadSessionZip: vi.fn() }))
 vi.mock('./userStudyLi/DemographicsQuestionnaire', () => ({ default: ({ researchId }) =>
@@ -22,6 +23,7 @@ let root, host
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   vi.clearAllMocks()
+  useSettingsStore.getState().updateSetting('userStudyMode', true)
   host = document.createElement('div'); document.body.append(host)
   root = createRoot(host)
   act(() => root.render(<UserStudyLiPage researcherOnly />))
@@ -36,8 +38,9 @@ function enterId(id) {
   })
 }
 
-it('recovers a local draft by research ID while offline without requiring Firebase', async () => {
-  await saveStudyBackup('LOCAL1', { snapshot: { phase: 'demographics', studyOrder: null,
+it('uses the local reference to recover answers from Firebase after refresh', async () => {
+  await saveStudyBackup('LOCAL1', { firebaseSessionId: 'session-1' })
+  recoverFirebaseStudy.mockResolvedValue({ snapshot: { phase: 'demographics', studyOrder: null,
     questionnaires: [{ questionnaireId: 'demographics', status: 'draft', rawAnswers: { age: '25' } }] } })
   await setActiveStudySession('LOCAL1')
   act(() => root.render(<UserStudyLiPage />))
@@ -45,10 +48,10 @@ it('recovers a local draft by research ID while offline without requiring Fireba
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
     expect(host.textContent).toContain('Recovered age: 25')
   })
-  expect(recoverFirebaseStudy).not.toHaveBeenCalled()
+  expect(recoverFirebaseStudy).toHaveBeenCalledWith('LOCAL1', false)
   expect(host.textContent).not.toContain('Recover study')
   expect(host.textContent).not.toContain('Researcher sign-in')
-  expect(host.textContent).toContain('Research ID: LOCAL1')
+  expect(host.querySelector('.user-study-li-cloud-status')).toBeNull()
 })
 
 it('lets an authorized researcher retrieve cloud results and download them without changing participant progress', async () => {

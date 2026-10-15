@@ -78,7 +78,7 @@ export function readInteractionRecords(researchId, storage = window.localStorage
   return records.sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.sequence - b.sequence)
 }
 
-export function createInteractionTracker({ researchId, storage = window.localStorage, getWorkspace, onError = () => {}, onRecovered = () => {} }) {
+export function createInteractionTracker({ researchId, storage = window.localStorage, getWorkspace, onError = () => {}, onRecovered = () => {}, sendEvent }) {
   const streamId = id()
   const started = performance.now()
   let sequence = 0
@@ -104,6 +104,7 @@ export function createInteractionTracker({ researchId, storage = window.localSto
       ...(tracksActivity(eventContext) ? { viewport: { width: window.innerWidth, height: window.innerHeight } } : {}),
       ...details,
     }
+    if (sendEvent) { sendEvent(entry); return entry }
     pending.push(entry)
     if (pending.length >= 100) flush()
     return entry
@@ -240,7 +241,7 @@ export function createInteractionTracker({ researchId, storage = window.localSto
     if (entry && ['workspace_snapshot', 'connection_warning'].includes(type)) flush()
   })
 
-  return { record, flush, setContext, read: () => { flush(); return [...readInteractionRecords(researchId, storage), ...pending] },
+  return { record, flush, setContext, read: () => { if (sendEvent) return []; flush(); return [...readInteractionRecords(researchId, storage), ...pending] },
     stop() {
       leaving('tracker-stopped')
       if (context) record('screen_leave', { durationMs: Math.round(performance.now() - entered) })

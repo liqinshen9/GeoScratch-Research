@@ -372,6 +372,44 @@ describe('exercise 5 (point to plane)', () => {
     expect(mod.evaluate({ objects: [], workspace }).steps.pointP).toBe(false)
   })
 
+  it.each([[0, -1.5, 0], [-3, 0, 0], [1, -3, 2], [-5, 0, 2]])('accepts the manually entered Q1 (%s, %s, %s) on the plane', (x, y, z) => {
+    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(x, y, z)]) })
+    expect(result.steps.pointQ).toBe(true)
+  })
+
+  it.each([[0, 0, 0], [-9, 8, 7], [1, -3, 2.001], [Infinity, 0, 0]])('rejects Q1 (%s, %s, %s) off the plane or invalid', (x, y, z) => {
+    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(x, y, z)]) })
+    expect(result.steps.pointQ).toBe(false)
+    expect(result.steps.difference).toBe(false)
+    expect(result.passed).toBe(false)
+  })
+
+  it('does not count the plane definition alone as a separate Q1', () => {
+    const plane = fakeBlock('parametric_plane', {}, { point: point(-5, 0, 2), norm: vec3(0.5, 1, 0.5) })
+    expect(mod.evaluate({ objects: [], workspace: fakeWorkspace([plane]) }).steps.pointQ).toBe(false)
+  })
+
+  it('uses the manually entered Q1 in the subtraction and normal rather than an unrelated on-plane point', () => {
+    const q = point(0, -1.5, 0)
+    const difference = fakeBlock('vector_arithmetic', { OP: 'subtract' }, { U: point(-9, 8, 7), V: q })
+    const normal = normalFrom(point(0, -1.5, 0))
+    const projection = fakeBlock('vector_project', {}, { U: difference, V: normal })
+    const magnitude = fakeBlock('vector_magnitude', {}, { V: projection })
+    const workspace = fakeWorkspace([point(1, -3, 2), magnitude])
+    const result = mod.evaluate({ objects: [{ userData: { geoType: 'point_plane_distance_projection_magnitude', distance: 8.5 / Math.sqrt(1.5) } }], workspace })
+    expect(result.steps).toMatchObject({ pointQ: true, difference: true, normalFromQ: true, projection: true, distance: true })
+    expect(result.passed).toBe(true)
+  })
+
+  it('does not accept an off-plane subtraction operand just because a separate Q1 lies on the plane', () => {
+    const difference = fakeBlock('vector_arithmetic', { OP: 'subtract' }, { U: point(-9, 8, 7), V: point(0, 0, 0) })
+    const result = mod.evaluate({ objects: [], workspace: fakeWorkspace([point(0, -1.5, 0), difference]) })
+    expect(result.steps.pointQ).toBe(true)
+    expect(result.steps.difference).toBe(false)
+    expect(result.steps.projection).toBe(false)
+    expect(result.passed).toBe(false)
+  })
+
   it('completes step 5 when the normal starts at the recorded Q1 coordinates', () => {
     expect(stepFive({ enteredQ: [2.25, -1.5, 3.7504] }).steps.normalFromQ).toBe(true)
   })

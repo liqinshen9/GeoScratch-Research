@@ -30,6 +30,8 @@ export const feedbackMessages = {
   planePending: 'The plane inputs match the given values. Run the workspace to check the rendered plane.',
   qPlane: 'This Show Point on Object block is not connected to the required exercise plane.',
   qPlaneHelp: 'Connect the plane defined by A = (-5, 0, 2) and n = (0.5, 1, 0.5). Any point Q₁ on that plane is valid.',
+  qOffPlane: 'This point does not lie on the exercise plane. Check its coordinates.',
+  qPlaneEquationHelp: 'The coordinates of Q₁ must satisfy 0.5x + y + 0.5z = -1.5. For example, (0, -1.5, 0) lies on the plane.',
   qPending: 'Run the workspace to display Q₁ on the plane, then click it to read its coordinates.',
   operation: 'This Vector Arithmetic block uses {actual}, rather than subtraction.',
   operationHelp: 'Choose subtraction and connect P as u and Q₁ as v to compute P − Q₁.',

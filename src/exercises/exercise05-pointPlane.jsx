@@ -133,6 +133,7 @@ function isExercisePlaneBlock(block) {
 }
 
 function isExercisePointQBlock(block) {
+  if (block?.type === 'linalg_point') return pointLiesOnExercisePlane(vec3FromBlock(block))
   return (
     block?.type === 'geo_show_point_on_object' &&
     isExercisePlaneBlock(getInputBlock(block, 'OBJECT'))
@@ -231,14 +232,55 @@ function findExercisePlaneBlock(workspace) {
 }
 
 function findExercisePointQBlock(workspace) {
+  const usedQ = getInputBlock(findPointDifferenceBlock(workspace), 'V')
+  if (usedQ) return usedQ
+  const displayedQ = workspace?.getBlocksByType('geo_show_point_on_object', false).find(isExercisePointQBlock)
+  if (displayedQ) return displayedQ
+  // The point defining the plane is not, by itself, a separate Q1 attempt.
+  const definingPoints = new Set(workspace?.getBlocksByType('parametric_plane', false).map((plane) => getInputBlock(plane, 'point')))
   return (
-    workspace?.getBlocksByType('geo_show_point_on_object', false).find(isExercisePointQBlock) ??
+    workspace?.getBlocksByType('linalg_point', false).find((block) => !definingPoints.has(block) && isExercisePointQBlock(block)) ??
     null
   )
 }
 
 function findPointDifferenceBlock(workspace) {
   return workspace?.getBlocksByType('vector_arithmetic', false).find(isPointDifferenceBlock) ?? null
+}
+
+function addManualPointQIfNeeded(objects, workspace) {
+  const block = findExercisePointQBlock(workspace)
+  if (block?.type !== 'linalg_point') return objects
+  if (objects.some((object) => object.userData?.geoType === 'exercise_point_q' && object.userData.srcBlockId === block.id)) return objects
+  const point = vec3FromBlock(block)
+  const color = window.GeoScratchColors?.forInstance('point', block.id) ?? POINT_MARKER_FALLBACK_COLOR
+  const existing = objects.find((object) => object.userData?.srcBlockId === block.id && object.userData.geoType === 'linalg_point_marker')
+  const marker = existing ?? createPointMarker({ color, geoType: 'selectable_point_marker', srcBlockId: block.id })
+  marker.position.copy(point)
+  marker.userData.geoType = 'selectable_point_marker'
+  marker.userData.coordinate = point.clone()
+  marker.userData.clickLabelAnchor = 'q'
+  marker.userData.labels = []
+  const group = new THREE.Group()
+  group.add(marker)
+  group.userData = {
+    geoType: 'exercise_point_q', srcBlockId: block.id, point: point.clone(), toggleLabelsOnClick: true,
+    labelAnchors: { q: { type: 'world', position: point.toArray() } },
+    labels: [{ anchor: 'q', name: 'Q1', value: vectorNotation.formatVector(point),
+      distanceFactor: 8, offset: [0.12, 0.12, 0], color, className: 'label--study-coordinate' }],
+  }
+  const difference = findPointDifferenceBlock(workspace)
+  for (const object of objects) {
+    object.traverse?.((child) => {
+      if (child.userData?.srcBlockId !== difference?.id) return
+      for (const label of child.userData.labels ?? []) {
+        if (label.anchor !== 'rTip') continue
+        if (label.text !== undefined) label.text = 'P − Q1'
+        else label.name = 'P − Q1'
+      }
+    })
+  }
+  return [...objects.filter((object) => object !== existing), group]
 }
 
 function findProjectionBlock(workspace) {
@@ -266,22 +308,23 @@ function findNormalFromQBlock(workspace) {
   return workspace?.getBlocksByType('linalg_vec3', false).find(isNormalFromPointBlock) ?? null
 }
 
-function findPointQObject(objects, workspace) {
+function findPointQCoordinates(objects, workspace) {
   // Q1 exists independently of the subtraction in step 4. Read it directly
   // so a correctly constructed normal can complete step 5 in any order.
   const pointQBlock = findExercisePointQBlock(workspace)
+  if (pointQBlock?.type === 'linalg_point') return vec3FromBlock(pointQBlock)
   return (
     objects.find(
       (object) =>
         object?.userData?.geoType === 'annotated_object' &&
         object.userData.srcBlockId === pointQBlock?.id,
-    ) ?? null
+    )?.userData?.point ?? null
   )
 }
 
 function normalStartsAtRecordedQ(objects, workspace) {
   const normalBlock = findNormalFromQBlock(workspace)
-  const qPoint = findPointQObject(objects, workspace)?.userData?.point
+  const qPoint = findPointQCoordinates(objects, workspace)
   const enteredPoint = vec3FromBlock(getInputBlock(normalBlock, 'ORIGIN'))
   // Q1 is shown to two decimal places, so accept the coordinates the
   // participant can actually read and enter from the 3D label.
@@ -342,6 +385,7 @@ function decoratePlaneDefinition(objects, visible) {
 
 function decorateObjects(objects, workspace) {
   let decorated = addExercisePointPIfNeeded(objects, workspace)
+  decorated = addManualPointQIfNeeded(decorated, workspace)
   decorated = replaceStudyNormalGlyph(decorated, workspace)
   decorated = decoratePlaneDefinition(decorated, !workspaceHasPointPVector(workspace))
   const blocks = {
@@ -384,7 +428,9 @@ function hasExercisePlane(objects) {
   return objects.some((object) => objectOrChildMatches(object, isExercisePlaneObject))
 }
 
-function hasPointQOnExercisePlane(objects) {
+function hasPointQOnExercisePlane(objects, workspace) {
+  const pointQBlock = findExercisePointQBlock(workspace)
+  if (pointQBlock?.type === 'linalg_point') return pointLiesOnExercisePlane(vec3FromBlock(pointQBlock))
   return objects.some(
     (object) =>
       object?.userData?.geoType === 'annotated_object' &&
@@ -483,12 +529,12 @@ function Steps(props) {
     ['pointP', 'Create: Point P = (-9, 8, 7).'],
     [
       'pointQ',
-      'Create: any point Q1 on the plane. Left-click Q1 in the 3D view and note its coordinates.',
+      'Create: any point Q1 on the plane using a Point block or Show any point on object block. Check its coordinates in the 3D view.',
     ],
     ['difference', 'Compute: P - Q1 with the Vector Arithmetic block.'],
     [
       'normalFromQ',
-      'Create: Point Q1 with the coordinates you noted, then create the normal n = (0.5, 1, 0.5) from that point.',
+      'Create: the normal n = (0.5, 1, 0.5) from Point Q1.',
     ],
     ['projection', 'Project: P - Q1 onto n with the Vector Project block.'],
     [
@@ -528,7 +574,7 @@ function evaluate({ objects, workspace }) {
   const passed = distanceComputationIsCorrect && normalFromRecordedQ
 
   const hasPointP = workspaceHasPointPVector(workspace)
-  const hasPointQ = hasPointQOnExercisePlane(objects)
+  const hasPointQ = hasPointQOnExercisePlane(objects, workspace)
   const steps = {
     plane: hasExercisePlane(objects),
     pointP: hasPointP,
@@ -542,7 +588,7 @@ function evaluate({ objects, workspace }) {
   const partialSteps = {
     plane: !steps.plane && hasAnyBlockOfType(workspace, 'parametric_plane'),
     pointP: !steps.pointP && hasAnyPointOrVectorBlock(workspace),
-    pointQ: !steps.pointQ && hasAnyPointOnObjectBlock(workspace),
+    pointQ: !steps.pointQ && (hasAnyPointOnObjectBlock(workspace) || hasAnyBlockOfType(workspace, 'linalg_point')),
     difference: !steps.difference && hasAnyPointDifferenceAttempt(workspace),
     normalFromQ: !steps.normalFromQ && hasAnyNormalVectorAttempt(workspace),
     projection: !steps.projection && hasAnyProjectionAttempt(workspace),
@@ -551,7 +597,7 @@ function evaluate({ objects, workspace }) {
   const partialMessages = {
     plane: 'Check that the plane uses point A = (-5, 0, 2) and normal n = (0.5, 1, 0.5).',
     pointP: 'Check that Point P has coordinates (-9, 8, 7).',
-    pointQ: 'Use the Show Point on Object block connected to the exercise plane.',
+    pointQ: 'Use a Point block whose coordinates satisfy 0.5x + y + 0.5z = -1.5, or Show Point on Object connected to the exercise plane.',
     difference: 'Use subtraction with P first and Q1 second: P - Q1.',
     normalFromQ:
       'Look at the coordinate of Q1 in the 3D view. The normal n should start from that point.',
@@ -562,7 +608,7 @@ function evaluate({ objects, workspace }) {
 
   const feedback = distanceFeedback({
     workspace, steps, distance, expectedDistance: CORRECT_DISTANCE,
-    qPoint: findPointQObject(objects, workspace)?.userData?.point,
+    qPoint: findPointQCoordinates(objects, workspace),
     isPlane: isExercisePlaneBlock, isQ: isExercisePointQBlock, isP: isPointPBlock,
     isNormal: isNormalVectorBlock, isDifference: isPointDifferenceBlock,
     isProjection: (block) => block?.type === 'vector_project'

@@ -55,7 +55,14 @@ export async function createFirebaseStudySession({ researchId, studyOrder = null
   if (!(await getDoc(reference)).exists()) {
     await setDoc(reference, { researchId, studyOrder, schemaVersion: 1, createdAt: serverTimestamp() })
   }
+  await saveParticipantSummary(db, uid, sessionId, researchId)
   return { path }
+}
+
+function saveParticipantSummary(db, uid, sessionId, researchId) {
+  return setDoc(doc(db, 'studyParticipants', uid), {
+    latestResearchId: researchId, latestSessionId: sessionId, lastSavedAt: serverTimestamp(),
+  })
 }
 
 export async function updateFirebaseStudyOrder(session, studyOrder) {
@@ -81,6 +88,51 @@ export async function saveFirebaseStudyRecovery(session, snapshot) {
   const { db, uid } = await connectStudyFirebase()
   if (session.path[1] !== uid) throw new Error('This study session belongs to a different participant.')
   await setDoc(doc(db, ...session.path, 'recovery', 'current'), { snapshot, savedAt: serverTimestamp() })
+  await saveParticipantSummary(db, uid, session.path[3], snapshot.researchId)
+}
+
+export async function saveFirebaseStudyInteraction(session, event) {
+  if (!session?.path || session.path.length !== 4) throw new Error('Start a Firebase study session before recording interactions.')
+  if (!event?.eventId || !['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'].includes(event.exerciseId)) throw new Error('Unknown interaction exercise.')
+  const { db, uid } = await connectStudyFirebase()
+  if (session.path[1] !== uid) throw new Error('This study session belongs to a different participant.')
+  const json = JSON.stringify(event)
+  const payload = {}
+  // A complete workspace can exceed a Firestore document. Publish its manifest
+  // only after all bounded JSON chunks have been acknowledged.
+  if (new TextEncoder().encode(json).length > 400000) {
+    const chunks = json.match(/[\s\S]{1,65000}/gu)
+    await Promise.all(chunks.map((text, index) => setDoc(doc(db, ...session.path, 'interactionPayloads', `${event.eventId}-${index}`), {
+      eventId: event.eventId, index, text,
+    })))
+    payload.payloadChunks = chunks.length
+  } else payload.dataJson = json
+  await setDoc(doc(db, ...session.path, 'interactions', event.eventId), {
+    eventId: event.eventId, researchId: event.researchId, exerciseId: event.exerciseId,
+    type: event.type, occurredAt: event.occurredAt, streamId: event.streamId, sequence: event.sequence,
+    sessionId: session.path[3], ...payload, savedAt: serverTimestamp(),
+  })
+}
+
+async function readInteractionHistory(db, path) {
+  const documents = await getDocs(collection(db, ...path, 'interactions'))
+  const manifests = documents.docs.map((item) => item.data())
+  const chunked = manifests.some((item) => item.payloadChunks)
+  const parts = chunked ? await getDocs(collection(db, ...path, 'interactionPayloads')) : null
+  const chunks = new Map(parts?.docs.map((item) => [item.id, item.data().text]) ?? [])
+  return manifests.map((item) => {
+    const json = item.dataJson ?? Array.from({ length: item.payloadChunks }, (_, index) => {
+      const part = chunks.get(`${item.eventId}-${index}`)
+      if (part === undefined) throw new Error('An interaction snapshot is incomplete. Retry the download.')
+      return part
+    }).join('')
+    return JSON.parse(json)
+  }).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.streamId.localeCompare(b.streamId) || a.sequence - b.sequence)
+}
+
+export async function readFirebaseStudyInteractions(session, asResearcher = false) {
+  const { db } = asResearcher ? researcherClient() : await connectStudyFirebase()
+  return readInteractionHistory(db, session.path)
 }
 
 let researcher

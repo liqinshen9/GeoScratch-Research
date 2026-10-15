@@ -14,7 +14,8 @@ export function recoveredSession(remote, researchId) {
       snapshot.lectureExerciseResponses = [...snapshot.lectureExerciseResponses.filter((item) => item.exerciseId !== data.exerciseId),
         ...data.submissions.map((item) => ({ ...item, exerciseId: data.exerciseId }))]
       snapshot.lectureExerciseTimings = [...snapshot.lectureExerciseTimings.filter((item) => item.exerciseId !== data.exerciseId),
-        { exerciseId: data.exerciseId, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs }]
+        { exerciseId: data.exerciseId, startedAt: data.startedAt, completedAt: data.completedAt, durationMs: data.durationMs,
+          timedOut: data.timedOut ?? null, completionReason: data.completionReason ?? null, timeLimitSeconds: data.timeLimitSeconds ?? null }]
     } else if (data.result) {
       snapshot.geoscratchResults = [...snapshot.geoscratchResults.filter((item) => item.exerciseId !== data.exerciseId), data.result]
     }

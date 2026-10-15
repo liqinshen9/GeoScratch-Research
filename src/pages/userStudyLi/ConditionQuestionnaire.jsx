@@ -154,17 +154,17 @@ function buildConditionResponsePayload(answers, researchId) {
   }
 }
 
-export default function ConditionQuestionnaire({ researchId, condition, conditionOrder, onComplete, onSave, storageWarning }) {
+export default function ConditionQuestionnaire({ researchId, condition, conditionOrder, onComplete, onSave, storageWarning, recordResponses = true }) {
   const questionnaireId = condition === 'Lecture slides' ? 'condition-lecture' : 'condition-geoscratch'
   const acceptConditionResponses = true
   const [conditionAnswers, setConditionAnswers] = useState(() =>
-    (readQuestionnaireDraft(researchId, questionnaireId)?.rawAnswers ?? { ...makeInitialConditionAnswers(researchId),
+    ((recordResponses && readQuestionnaireDraft(researchId, questionnaireId)?.rawAnswers) || { ...makeInitialConditionAnswers(researchId),
       ...(condition ? { condition } : {}),
       ...(conditionOrder ? { conditionOrder } : {}),
     }),
   )
   const [conditionSavedMessage, setConditionSavedMessage] = useState('')
-  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId, answers: conditionAnswers, buildPayload: buildConditionResponsePayload, enabled: acceptConditionResponses })
+  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId, answers: conditionAnswers, buildPayload: buildConditionResponsePayload, enabled: acceptConditionResponses && recordResponses })
 
   function updateConditionAnswer(id, value) {
     setConditionAnswers((current) => ({ ...current, [id]: value }))
@@ -176,8 +176,8 @@ export default function ConditionQuestionnaire({ researchId, condition, conditio
     if (!acceptConditionResponses) return
 
     const payload = buildConditionResponsePayload(conditionAnswers, researchId)
-    onSave(payload, 'condition', CONDITION_RESPONSE_BACKUP_KEY)
-    setConditionSavedMessage('Answers saved.')
+    if (recordResponses) onSave(payload, 'condition', CONDITION_RESPONSE_BACKUP_KEY)
+    setConditionSavedMessage(recordResponses ? 'Answers saved.' : 'Preview only. Answers are not recorded.')
     onComplete()
   }
 

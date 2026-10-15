@@ -74,7 +74,9 @@ export function distanceFeedback({ workspace, steps, qPoint, distance, expectedD
   const point = best([...blocks(workspace, 'linalg_point'), ...blocks(workspace, 'linalg_vec3')], [
     (b) => closeNumber(b.getFieldValue('X'), -9), (b) => closeNumber(b.getFieldValue('Y'), 8), (b) => closeNumber(b.getFieldValue('Z'), 7),
   ])
-  const q = best(blocks(workspace, 'geo_show_point_on_object'), [isQ])
+  const definingPoints = new Set(blocks(workspace, 'parametric_plane').map((plane) => getInputBlock(plane, 'point')))
+  const q = best([...blocks(workspace, 'geo_show_point_on_object'),
+    ...blocks(workspace, 'linalg_point').filter((block) => !definingPoints.has(block) && !isP(block))], [isQ])
   const subtraction = best(blocks(workspace, 'vector_arithmetic'), [(b) => b.getFieldValue('OP') === 'subtract', (b) => isP(getInputBlock(b, 'U')), (b) => isQ(getInputBlock(b, 'V'))])
   const normal = best(blocks(workspace, 'linalg_vec3'), [isNormal, (b) => getInputBlock(b, 'ORIGIN')?.type === 'linalg_point'])
   const projection = best(blocks(workspace, 'vector_project'), [(b) => isDifference(getInputBlock(b, 'U')), (b) => isNormal(getInputBlock(b, 'V'))])
@@ -83,7 +85,9 @@ export function distanceFeedback({ workspace, steps, qPoint, distance, expectedD
   feedback.plane = !plane ? missing('Plane') : coordinateFeedback(getInputBlock(plane, 'point'), [-5, 0, 2], 'plane point A')
     || coordinateFeedback(getInputBlock(plane, 'norm'), [0.5, 1, 0.5], 'plane normal') || issue('planePending', null, plane)
   feedback.pointP = !point ? missing('Point') : coordinateFeedback(point, [-9, 8, 7], 'P') || issue('pSuccess')
-  feedback.pointQ = !q ? missing('Show Point on Object') : !isPlane(getInputBlock(q, 'OBJECT')) ? issue('qPlane', 'qPlaneHelp', q) : issue('qPending', null, q)
+  feedback.pointQ = !q ? missing('Point or Show Point on Object')
+    : q.type === 'linalg_point' ? issue('qOffPlane', 'qPlaneEquationHelp', q)
+      : !isPlane(getInputBlock(q, 'OBJECT')) ? issue('qPlane', 'qPlaneHelp', q) : issue('qPending', null, q)
   feedback.difference = !subtraction ? missing('Vector Arithmetic') : subtraction.getFieldValue('OP') !== 'subtract'
     ? issue('operation', 'operationHelp', subtraction, { actual: subtraction.getFieldValue('OP') })
     : isQ(getInputBlock(subtraction, 'U')) && isP(getInputBlock(subtraction, 'V')) ? issue('reversed', 'reversedHelp', subtraction)

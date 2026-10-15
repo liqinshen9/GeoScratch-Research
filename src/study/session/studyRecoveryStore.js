@@ -1,5 +1,9 @@
 const DATABASE = 'geoscratch-study-recovery'
 let database
+function referenceOnly(value = {}) {
+  return Object.fromEntries(['researchId', 'firebaseSessionId', 'firebaseSession', 'activeResearchId', 'updatedAt']
+    .filter((key) => value[key] !== undefined).map((key) => [key, value[key]]))
+}
 function openDatabase() {
   database ??= new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE, 1)
@@ -12,12 +16,13 @@ function openDatabase() {
 
 export async function saveStudyBackup(researchId, patch) {
   if (!researchId) return
+  if (!Object.keys(referenceOnly(patch)).length) return
   const db = await openDatabase()
   return new Promise((resolve, reject) => {
     const transaction = db.transaction('sessions', 'readwrite')
     const store = transaction.objectStore('sessions')
     const request = store.get(researchId)
-    request.onsuccess = () => store.put({ ...request.result, ...patch, researchId, updatedAt: new Date().toISOString() })
+    request.onsuccess = () => store.put({ ...referenceOnly(request.result), ...referenceOnly(patch), researchId, updatedAt: new Date().toISOString() })
     transaction.oncomplete = () => resolve()
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () => reject(transaction.error)
@@ -28,7 +33,7 @@ export async function readStudyBackup(researchId) {
   const db = await openDatabase()
   return new Promise((resolve, reject) => {
     const request = db.transaction('sessions').objectStore('sessions').get(researchId)
-    request.onsuccess = () => resolve(request.result ?? null)
+    request.onsuccess = () => resolve(request.result ? referenceOnly(request.result) : null)
     request.onerror = () => reject(request.error)
   })
 }

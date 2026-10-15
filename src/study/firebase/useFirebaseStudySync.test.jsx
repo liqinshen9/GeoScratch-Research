@@ -10,6 +10,7 @@ vi.mock('../session/studyRecoveryStore', () => ({ saveStudyBackup: vi.fn(async (
 let root, host
 function Probe(props) {
   const sync = useFirebaseStudySync(props)
+  props.onSync?.(sync)
   return <button onClick={() => props.onCommit ? props.onCommit(sync) : sync.retry()}>{sync.state}:{sync.count}</button>
 }
 beforeEach(() => {
@@ -68,6 +69,17 @@ it('saves demographics before study order and retries a failed upload without dr
   expect(createFirebaseStudySession).toHaveBeenCalledTimes(1)
 })
 
+it('identifies a rejected post-study save and retries the same answers', async () => {
+  let sync
+  const data = { status: 'submitted', responses: [{ id: 'comments', answer: 'My final answer' }] }
+  saveFirebaseStudyRecord.mockRejectedValueOnce({ code: 'resource-exhausted', message: 'Quota exceeded.' })
+  await render({ researchId: 'P1', records: [{ stageId: 'post-study', data }], onSync: (value) => { sync = value } })
+  expect(sync).toMatchObject({ state: 'error', code: 'resource-exhausted', failedSave: 'post-study', errorMessage: 'Quota exceeded.' })
+  await act(async () => host.querySelector('button').click())
+  expect(saveFirebaseStudyRecord).toHaveBeenLastCalledWith(expect.anything(), 'post-study', data)
+  expect(sync.state).toBe('saved')
+})
+
 it('adds the selected order when it changes during the first demographics upload', async () => {
   let finish
   createFirebaseStudySession.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
@@ -100,6 +112,20 @@ it('isolates a new research session from an unfinished previous session', async 
   await render({ ...props, researchId: 'P1' })
   await render({ ...props, researchId: 'P2' })
   await act(async () => finish({ path: ['session-a'] }))
-  expect(saveFirebaseStudyRecord.mock.calls.map(([session]) => session.path[0]).sort()).toEqual(['session-a', 'session-b'])
+  expect(saveFirebaseStudyRecord.mock.calls.map(([session]) => session.path[0])).toEqual(['session-b'])
   expect(host.textContent).toBe('saved:1')
+})
+
+it('stops new writes while recording is off and resumes the same server session', async () => {
+  const props = { researchId: 'P1', records: [{ stageId: 'demographics', data: { answer: 'recorded' } }] }
+  await render(props)
+  expect(createFirebaseStudySession).toHaveBeenCalledOnce()
+  const count = saveFirebaseStudyRecord.mock.calls.length
+  await render({ ...props, researchId: '', records: [] })
+  await act(async () => host.querySelector('button').click())
+  await act(async () => window.dispatchEvent(new Event('online')))
+  expect(saveFirebaseStudyRecord).toHaveBeenCalledTimes(count)
+  await render({ ...props, records: [...props.records, { stageId: 'post-study', data: { answer: 'new recorded answer' } }] })
+  expect(createFirebaseStudySession).toHaveBeenCalledOnce()
+  expect(saveFirebaseStudyRecord).toHaveBeenLastCalledWith({ path: ['session-a'] }, 'post-study', { answer: 'new recorded answer' })
 })

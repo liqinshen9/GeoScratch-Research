@@ -60,14 +60,14 @@ describe('ordered session archive', () => {
     expect(JSON.stringify(archive)).not.toContain('screen_enter')
   })
 
-  it('excludes historical exercise snapshots from export without changing the stored records', () => {
+  it('includes exercise interaction histories without changing the original records', () => {
     const records = ['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'].map((exerciseId) => ({
       phase: 'geoscratch', conditionId: 'geoscratch', exerciseId, type: 'workspace_snapshot',
       snapshot: { largePrivateSnapshot: 'old saved workspace' }, occurredAt: '2026-10-13T01:05:00.000Z',
     }))
     const before = JSON.stringify(records)
     const archive = buildSessionFiles({ ...session, interactionLog: [...session.interactionLog, ...records] })
-    expect(JSON.stringify(archive)).not.toContain('largePrivateSnapshot')
+    expect(JSON.stringify(archive)).toContain('largePrivateSnapshot')
     expect(JSON.stringify(records)).toBe(before)
   })
 

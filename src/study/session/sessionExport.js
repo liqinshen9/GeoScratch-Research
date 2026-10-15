@@ -25,7 +25,7 @@ export function questionnaireData(questionnaire) {
   }
 }
 
-export function buildSessionFiles({ researchId, studyOrder, questionnaires = [], lectureExerciseResponses = [], lectureExerciseTimings = [], tutorialSummary = null, geoscratchResults = [], lectureDrafts = {} }) {
+export function buildSessionFiles({ researchId, studyOrder, questionnaires = [], lectureExerciseResponses = [], lectureExerciseTimings = [], tutorialSummary = null, geoscratchResults = [], lectureDrafts = {}, interactionLog }) {
   if (!researchId) throw new Error('A research ID is required for session export.')
   if (studyOrder != null && !['lecture-first', 'geoscratch-first'].includes(studyOrder)) throw new Error('Unknown study order.')
   const folder = researchId.replace(/[^a-zA-Z0-9_-]/g, '-')
@@ -45,20 +45,25 @@ export function buildSessionFiles({ researchId, studyOrder, questionnaires = [],
       .map((item, index) => ({ attempt: index + 1, submittedAt: item.submittedAt, answer: item.answer,
         ...(item.elapsedMs != null ? { elapsedMs: item.elapsedMs } : {}),
         ...(item.answerLabel !== undefined ? { answerLabel: item.answerLabel } : {}),
+        ...(item.answerFormat !== undefined ? { answerFormat: item.answerFormat } : {}),
         ...(item.correct !== undefined ? { correct: item.correct } : {}),
       }))
     add(`lecture_exercise_${number}`, 'exercise-answers', {
       startedAt: timing?.startedAt ?? null, completedAt: timing?.completedAt ?? null,
       durationMs: timing?.durationMs ?? null, submissions,
+      timedOut: timing?.timedOut ?? null, completionReason: timing?.completionReason ?? null,
+      timeLimitSeconds: timing?.timeLimitSeconds ?? null,
       ...(lectureDrafts[exerciseId] != null ? { draftAnswer: lectureDrafts[exerciseId] } : {}),
     }, { conditionId: 'lecture', conditionNumber, exerciseId })
   }
   function addGeoScratch(exerciseId, name, conditionNumber) {
+    const interactions = Array.isArray(interactionLog) ? interactionLog.filter((event) => event.exerciseId === exerciseId && event.conditionId === 'geoscratch') : []
     // Keep only a small completion/skip summary, never tutorial interaction data.
     add(name, 'exercise-tracking', {
       ...(exerciseId === TRIAL ? { tutorial: tutorialSummary ?? { status: 'not-recorded', skipSource: null } } : {}),
       ...(geoscratchResults.find((item) => item.exerciseId === exerciseId)
         ? { result: geoscratchResults.find((item) => item.exerciseId === exerciseId) } : {}),
+      ...(interactions?.length ? { interactionSchemaVersion: 2, interactions } : {}),
     },
       { conditionId: 'geoscratch', conditionNumber, exerciseId })
   }

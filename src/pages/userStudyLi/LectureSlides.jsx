@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import LectureCubeRotation from './LectureCubeRotation'
+import ExerciseCountdown from './ExerciseCountdown'
 
 const ANSWER_CHOICES = [
   { id: 'dot-product', label: '8.5' },
@@ -9,23 +10,40 @@ const ANSWER_CHOICES = [
   { id: 'divide-squared-normal', label: '17 / 3' },
 ]
 
-export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseChange, onExerciseFinish, trackingError, initialExercise = 1, drafts = {}, onDraftChange, onExerciseNumberChange }) {
+export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseChange, onExerciseFinish, trackingError, initialExercise = 1, drafts = {}, onDraftChange, onExerciseNumberChange, timerEnabled = false, timings = [], onExerciseTimeout, timeUpMessage, requireSubmission = false, submittedExerciseIds = [], allowPrevious = false, recordAnswers = true }) {
   const [exercise, setExercise] = useState(initialExercise)
   const [selectedAnswer, setSelectedAnswer] = useState(drafts['point-plane-distance'] ?? '')
   const [submittedAnswer, setSubmittedAnswer] = useState('')
+  const [hintExerciseId, setHintExerciseId] = useState('')
+  useEffect(() => { setExercise(initialExercise) }, [initialExercise])
   useEffect(() => {
     onExerciseChange?.(exercise === 1 ? 'cube-point-pivot-rotation' : 'point-plane-distance')
   }, [exercise, onExerciseChange])
+  const exerciseId = exercise === 1 ? 'cube-point-pivot-rotation' : 'point-plane-distance'
+  const submissionRequired = requireSubmission && !submittedExerciseIds.includes(exerciseId)
+  const showSubmissionHint = submissionRequired && hintExerciseId === exerciseId
+  const startedAt = timings.find((timing) => timing.exerciseId === exerciseId)?.startedAt
+  const countdown = <div className="user-study-li-lecture-timer-bar">
+    <ExerciseCountdown key={exerciseId} enabled={timerEnabled && Boolean(startedAt)} limitSeconds={600} startedAt={startedAt}
+      onTimeout={() => {
+        onExerciseTimeout?.(exerciseId)
+        if (exercise === 1) { setExercise(2); onExerciseNumberChange?.(2) }
+      }} />
+  </div>
 
   if (exercise === 1) {
     return <div key="cube" className="user-study-li-form-page user-study-li-lecture-page user-study-li-lecture-cube-page">
+      {timerEnabled && countdown}
       <main className="user-study-li-lecture-content">
+        {timeUpMessage && <p className="user-study-li-time-up" role="alert">{timeUpMessage}</p>}
         {trackingError && <p role="alert">{trackingError}</p>}
-        <LectureCubeRotation onSubmitAnswer={onSubmitAnswer} initialAnswer={drafts['cube-point-pivot-rotation'] ?? ''}
+        <LectureCubeRotation recordResponses={recordAnswers} onSubmitAnswer={onSubmitAnswer} initialAnswer={drafts['cube-point-pivot-rotation'] ?? ''}
           onDraftChange={(answer) => onDraftChange?.('cube-point-pivot-rotation', answer)} />
       </main>
       <footer className="user-study-li-lecture-footer">
-        <button type="button" className="user-study-li-primary-action" onClick={() => {
+        {showSubmissionHint && <span id="lecture-submit-required" role="status">Submit an answer to continue.</span>}
+        <button type="button" className="user-study-li-primary-action" aria-disabled={submissionRequired} aria-describedby={showSubmissionHint ? 'lecture-submit-required' : undefined} onClick={() => {
+          if (submissionRequired) { setHintExerciseId(exerciseId); return }
           const proceed = (saved) => { if (saved !== false) { setExercise(2); onExerciseNumberChange?.(2) } }
           const saved = onExerciseFinish?.('cube-point-pivot-rotation')
           if (saved?.then) void saved.then(proceed)
@@ -38,7 +56,9 @@ export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseCh
   }
 
   return <div key="distance" className="user-study-li-form-page user-study-li-lecture-page">
+    {timerEnabled && countdown}
     <main className="user-study-li-lecture-content">
+      {timeUpMessage && <p className="user-study-li-time-up" role="alert">{timeUpMessage}</p>}
       {trackingError && <p role="alert">{trackingError}</p>}
       <h1 id="lecture-point-plane-title">Exercise 2: Calculate the shortest distance from a point to a plane</h1>
       <section className="user-study-li-lecture-slides" aria-label="Plane definition and distance lecture slides">
@@ -116,7 +136,10 @@ export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseCh
       </section>
     </main>
     <footer className="user-study-li-lecture-footer">
-      <button type="button" className="user-study-li-primary-action" onClick={() => {
+      {allowPrevious && <button type="button" className="user-study-li-secondary-action" onClick={() => { setExercise(1); onExerciseNumberChange?.(1) }}>Previous</button>}
+      {showSubmissionHint && <span id="lecture-submit-required" role="status">Submit an answer to continue.</span>}
+      <button type="button" className="user-study-li-primary-action" aria-disabled={submissionRequired} aria-describedby={showSubmissionHint ? 'lecture-submit-required' : undefined} onClick={() => {
+        if (submissionRequired) { setHintExerciseId(exerciseId); return }
         const saved = onExerciseFinish?.('point-plane-distance')
         if (saved?.then) void saved.then((success) => { if (success !== false) onComplete() })
         else if (saved !== false) onComplete()

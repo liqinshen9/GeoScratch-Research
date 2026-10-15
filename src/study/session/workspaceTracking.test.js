@@ -34,7 +34,7 @@ afterEach(() => {
 })
 
 describe('detailed Blockly study tracking', () => {
-  it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('does not install tracking or capture snapshots for %s', (exerciseId) => {
+  it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('captures block edits and nested snapshots for %s', (exerciseId) => {
     const other = new Blockly.Workspace()
     const ignored = vi.fn(), getCustomBlocks = vi.fn()
     const originalUndo = other.undo
@@ -45,8 +45,8 @@ describe('detailed Blockly study tracking', () => {
       disabled.warning('Connection warning', {})
       flushEvents()
       disabled.stop()
-      expect(ignored).not.toHaveBeenCalled()
-      expect(getCustomBlocks).not.toHaveBeenCalled()
+      expect(ignored).toHaveBeenCalledWith('block_create', expect.anything(), expect.objectContaining({ exerciseId }))
+      expect(getCustomBlocks).toHaveBeenCalled()
       expect(other.undo).toBe(originalUndo)
     } finally { other.dispose() }
   })

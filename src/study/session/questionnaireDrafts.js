@@ -66,7 +66,7 @@ export function markQuestionnaireSubmitted(researchId, questionnaireId, payload)
 export function useQuestionnaireAutosave({ researchId, questionnaireId, answers, buildPayload, enabled }) {
   const [storageError, setStorageError] = useState(null)
   useEffect(() => {
-    if (!researchId) return
+    if (!researchId || !enabled) return
     const saved = writeRecord(keyFor(researchId, questionnaireId), {
       ...buildPayload(answers, researchId), researchId, questionnaireId,
       rawAnswers: answers, status: 'draft', submittedAt: null,
@@ -76,11 +76,11 @@ export function useQuestionnaireAutosave({ researchId, questionnaireId, answers,
   }, [researchId, questionnaireId, answers, buildPayload, enabled])
 
   useEffect(() => () => {
-    if (!researchId) return
+    if (!researchId || !enabled) return
     const previous = readQuestionnaireDraft(researchId, questionnaireId)
     if (previous?.status === 'draft') writeRecord(keyFor(researchId, questionnaireId), {
       ...previous, status: 'not-submitted', leftAt: new Date().toISOString(),
     })
-  }, [researchId, questionnaireId])
+  }, [researchId, questionnaireId, enabled])
   return storageError
 }

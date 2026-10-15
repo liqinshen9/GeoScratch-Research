@@ -176,7 +176,7 @@ export default function SettingsPage() {
           <SettingsSection title="General" className="settings-card--wide">
             <ToggleRow
               label="User study mode"
-              description="Require exercises to pass before Next and prevent returning to previous exercises. GeoScratch study tasks have 5, 10, and 10 minute limits and advance automatically when time is up. Automatically download the study ZIP on completion. Turn off for unrestricted exercise navigation without timers or automatic downloads."
+              description="On: record study data in Firebase, enforce exercise progress and timers, and automatically download the study ZIP on completion. GeoScratch tasks have 5, 10, and 10 minute limits; lecture exercises each have 10 minutes. Off: developer preview with unrestricted Previous/Next, no timers, no saved questionnaires, answers or interactions, and no ZIP downloads."
               checked={settings.userStudyMode}
               settingKey="userStudyMode"
               onChange={(value) => updateSetting('userStudyMode', value)}

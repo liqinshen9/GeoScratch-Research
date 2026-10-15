@@ -22,6 +22,15 @@ service cloud.firestore {
     match /{path=**}/sessions/{sessionId} {
       allow read: if researcher();
     }
+    match /studyParticipants/{uid} {
+      allow read: if owns(uid) || researcher();
+      allow create, update: if owns(uid)
+        && request.resource.data.keys().hasOnly(['latestResearchId', 'latestSessionId', 'lastSavedAt'])
+        && request.resource.data.latestSessionId is string
+        && exists(/databases/$(database)/documents/studyParticipants/$(uid)/sessions/$(request.resource.data.latestSessionId))
+        && request.resource.data.latestResearchId == get(/databases/$(database)/documents/studyParticipants/$(uid)/sessions/$(request.resource.data.latestSessionId)).data.researchId
+        && request.resource.data.lastSavedAt == request.time;
+    }
     match /studyParticipants/{uid}/sessions/{sessionId} {
       allow read: if owns(uid) || researcher();
       allow create: if owns(uid)
@@ -55,6 +64,30 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['snapshot', 'savedAt'])
           && request.resource.data.snapshot is map
           && request.resource.data.savedAt == request.time;
+      }
+      match /interactions/{eventId} {
+        allow read: if owns(uid) || researcher();
+        allow create, update: if owns(uid)
+          && exists(/databases/$(database)/documents/studyParticipants/$(uid)/sessions/$(sessionId))
+          && request.resource.data.keys().hasOnly(['eventId', 'researchId', 'exerciseId', 'type', 'occurredAt', 'streamId', 'sequence', 'sessionId', 'dataJson', 'payloadChunks', 'savedAt'])
+          && request.resource.data.eventId == eventId
+          && request.resource.data.sessionId == sessionId
+          && request.resource.data.researchId == get(/databases/$(database)/documents/studyParticipants/$(uid)/sessions/$(sessionId)).data.researchId
+          && request.resource.data.exerciseId in ['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance']
+          && request.resource.data.type is string && request.resource.data.occurredAt is string
+          && request.resource.data.streamId is string && request.resource.data.sequence is int
+          && (('dataJson' in request.resource.data && request.resource.data.dataJson is string)
+            || ('payloadChunks' in request.resource.data && request.resource.data.payloadChunks is int && request.resource.data.payloadChunks > 0))
+          && request.resource.data.savedAt == request.time;
+      }
+      match /interactionPayloads/{partId} {
+        allow read: if owns(uid) || researcher();
+        allow create, update: if owns(uid)
+          && exists(/databases/$(database)/documents/studyParticipants/$(uid)/sessions/$(sessionId))
+          && request.resource.data.keys().hasOnly(['eventId', 'index', 'text'])
+          && request.resource.data.eventId is string && request.resource.data.index is int
+          && request.resource.data.index >= 0 && request.resource.data.text is string
+          && request.resource.data.text.size() <= 260000;
       }
     }
   }

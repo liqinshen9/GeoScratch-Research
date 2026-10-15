@@ -5,6 +5,11 @@ import THREE from '@/utils/three'
 import defineBlocks from './index'
 import { namedSavedWorkspaceXml } from './savedWorkspace'
 import { generateAndRun } from '@/utils/generateAndRun'
+import cubePointPivot from '@/exercises/exercise10-cubePointPivot'
+import pointPlane from '@/exercises/exercise05-pointPlane'
+import { findLabelOwner } from '@/utils/scenePicking'
+import { getLabelsForObject, getLabelVisibilityKeysForObject } from '@/components/Scene3D/labels/labelData'
+import { BlockRegistry } from '../state/BlockRegistry'
 
 vi.mock('@/store/colorSystem', () => ({ forRole: () => '#3366cc', forInstance: () => '#3366cc',
   forInstanceVariant: () => '#3366cc', subscribeToPreset: () => () => {} }))
@@ -21,7 +26,7 @@ beforeEach(() => {
   defineBlocks()
   workspace = new Blockly.Workspace()
   window.threeObjStore = {}
-  window.GeoScratchColors = { forInstance: () => '#3366cc', forRole: () => '#3366cc', forInstanceVariant: () => '#3366cc' }
+  window.GeoScratchColors = { forInstance: () => '#3366cc', forRole: () => '#3366cc', forInstanceVariant: () => '#3366cc', subscribeToPreset: () => () => {} }
   const context = new Proxy({}, { get: () => () => {}, set: () => true })
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => context)
   errors = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -32,6 +37,63 @@ afterEach(() => {
 })
 
 describe('named saved constructions', () => {
+  it('calculates the full point-plane distance with a manually entered Q1', () => {
+    Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(pointPlane.solutionXml), workspace)
+    const displayedQ = workspace.getBlocksByType('geo_show_point_on_object', false)[0]
+    displayedQ.getInputTargetBlock('OBJECT').unplug()
+    const difference = workspace.getBlocksByType('vector_arithmetic', false)[0]
+    displayedQ.dispose()
+    const makeQ = () => {
+      const q = workspace.newBlock('linalg_point')
+      q.setFieldValue('0', 'X'); q.setFieldValue('-1.5', 'Y'); q.setFieldValue('0', 'Z')
+      return q
+    }
+    difference.getInput('V').connection.connect(makeQ().outputConnection)
+    const normal = workspace.getBlocksByType('vector_project', false)[0].getInputTargetBlock('V')
+    normal.getInput('ORIGIN').connection.connect(makeQ().outputConnection)
+    generateAndRun(workspace)
+    expect(errors).not.toHaveBeenCalled()
+    const result = pointPlane.evaluate({ objects: Object.values(window.threeObjStore), workspace })
+    expect(Object.values(result.steps).every(Boolean)).toBe(true)
+    expect(result.passed).toBe(true)
+    const registry = new BlockRegistry()
+    registry.reconcile(Object.values(window.threeObjStore))
+    const objects = pointPlane.decorateObjects(registry.list().map((entry) => entry.obj), workspace)
+    const q = objects.find((object) => object.userData.geoType === 'exercise_point_q')
+    expect(q.userData.labels[0]).toMatchObject({ name: 'Q1', value: expect.stringContaining('-1.5') })
+    expect(q.position.toArray()).toEqual([0, 0, 0])
+    const marker = q.children[0]
+    expect(marker.position.toArray()).toEqual([0, -1.5, 0])
+    expect(marker.userData.clickLabelAnchor).toBe('q')
+    expect(findLabelOwner(marker, getLabelsForObject)).toBe(q)
+    expect(getLabelVisibilityKeysForObject(q)).toHaveLength(1)
+    const animation = objects.find((object) => typeof object.userData.animateSteps === 'function')
+    expect(animation).toBeTruthy()
+    animation.userData.animateSteps(0)
+    expect(marker.visible).toBe(false)
+    expect(q.userData.labels[0].revealed()).toBe(false)
+    animation.userData.animateSteps(2.4 / 9.7)
+    expect(marker.visible).toBe(true)
+    expect(q.userData.labels[0].revealed()).toBe(true)
+    animation.userData.animateSteps(1)
+    expect(pointPlane.evaluate({ objects, workspace }).passed).toBe(true)
+  })
+  it('allows the real generated cube rotation solution to pass all steps and the exercise', () => {
+    Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(cubePointPivot.solutionXml), workspace)
+    generateAndRun(workspace)
+    expect(errors).not.toHaveBeenCalled()
+    const objects = Object.values(window.threeObjStore)
+    const result = cubePointPivot.evaluate({ objects, workspace })
+    expect(result.steps).toEqual({ pipeline: true, toOrigin: true, rotate: true, back: true })
+    expect(result.correct).toBe(true)
+    expect(result.passed).toBe(true)
+    cubePointPivot.decorateObjects(objects, workspace)
+    const target = result.target
+    for (const progress of [0, 0.5, 0.625, 1]) {
+      target.userData.animateSteps(progress)
+      expect(cubePointPivot.evaluate({ objects, workspace }).passed, `animation progress ${progress}`).toBe(true)
+    }
+  })
   it('shows one block with the exact chosen name and stores the construction inside', () => {
     const block = insert(mouse)
     expect(workspace.getAllBlocks(false)).toHaveLength(1)

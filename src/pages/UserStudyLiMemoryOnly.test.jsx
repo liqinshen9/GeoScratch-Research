@@ -8,7 +8,7 @@ import UserStudyLiPage from './UserStudyLiPage'
 import useSettingsStore from '@/store/useSettingsStore'
 import { createFirebaseStudySession, saveFirebaseStudyRecord } from '@/study/firebase/studyFirebase'
 
-vi.mock('@/study/firebase/studyFirebase', () => ({ createFirebaseStudySession: vi.fn(async () => ({ path: ['test'] })), saveFirebaseStudyRecord: vi.fn(async () => {}), updateFirebaseStudyOrder: vi.fn(async () => {}), saveFirebaseStudyRecovery: vi.fn(async () => {}) }))
+vi.mock('@/study/firebase/studyFirebase', () => ({ createFirebaseStudySession: vi.fn(async () => ({ path: ['test'] })), saveFirebaseStudyRecord: vi.fn(async () => {}), updateFirebaseStudyOrder: vi.fn(async () => {}), saveFirebaseStudyRecovery: vi.fn(async () => {}), saveFirebaseStudyInteraction: vi.fn(async () => {}), readFirebaseStudyInteractions: vi.fn(async () => []) }))
 
 vi.mock('@/hooks/useThemeSync', () => ({ default: () => {} }))
 vi.mock('@/store/useWorkspaceStore', () => ({ default: { getState: () => ({ setUserBlockScope: () => {}, savedXml: {} }) } }))
@@ -25,11 +25,11 @@ vi.mock('./userStudyLi/DemographicsQuestionnaire', () => ({ default: ({ onSave, 
 }}>Finish demographics</button> }))
 vi.mock('./userStudyLi/LectureSlides', () => ({ default: function Lecture({ onExerciseChange, onExerciseFinish, onSubmitAnswer, onComplete }) {
   useEffect(() => onExerciseChange('cube-point-pivot-rotation'), [onExerciseChange])
-  return <button onClick={async () => {
-    onSubmitAnswer({ exerciseId: 'cube-point-pivot-rotation', answer: 'My lecture answer', submittedAt: new Date().toISOString() })
+  return <><button onClick={() => onSubmitAnswer({ exerciseId: 'cube-point-pivot-rotation', answer: 'Submitted answer', submittedAt: new Date().toISOString() })}>Submit lecture answer</button><button onClick={async () => {
+    await onSubmitAnswer({ exerciseId: 'cube-point-pivot-rotation', answer: 'My lecture answer', submittedAt: new Date().toISOString() })
     await onExerciseFinish('cube-point-pivot-rotation')
     await onComplete()
-  }}>Finish lecture</button>
+  }}>Finish lecture</button></>
 } }))
 vi.mock('./userStudyLi/ConditionQuestionnaire', () => ({ default: ({ condition, onSave, onComplete }) => <button onClick={() => {
   onSave({ answers: { feedback: condition } }, 'condition', 'userstudyLi.conditionResponses')
@@ -49,10 +49,53 @@ afterEach(() => {
   localStorage.clear()
   delete globalThis.IS_REACT_ACT_ENVIRONMENT
 })
+it('keeps autosaves quiet and shows saving only while Next or a submitted answer is uploading', async () => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  useSettingsStore.getState().resetSettings()
+  useSettingsStore.getState().updateSetting('userStudyMode', true)
+  host = document.createElement('div'); document.body.append(host)
+  root = createRoot(host)
+  act(() => root.render(<UserStudyLiPage autoResume={false} />))
+  let finishSave
+  createFirebaseStudySession.mockImplementationOnce(() => new Promise((resolve) => { finishSave = resolve }))
+  await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Start new session').click())
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+    expect(finishSave).toBeTypeOf('function')
+  })
+  expect(host.querySelector('.user-study-li-cloud-status')).toBeNull()
+  expect(host.querySelector('[data-saving-transition]')).toBeNull()
+  await act(async () => finishSave({ path: ['test'] }))
+
+  const submitAndFinishSave = async (label) => {
+    finishSave = undefined
+    saveFirebaseStudyRecord.mockImplementationOnce(() => new Promise((resolve) => { finishSave = resolve }))
+    await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === label).click())
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+      expect(finishSave).toBeTypeOf('function')
+    })
+    expect(host.querySelector('[data-saving-transition]').textContent).toContain('Saving your results')
+    await act(async () => finishSave())
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+      expect(host.querySelector('[data-saving-transition]')).toBeNull()
+    })
+    expect(host.querySelector('.user-study-li-cloud-status')).toBeNull()
+  }
+  await submitAndFinishSave('Finish demographics')
+  await act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Condition 2: Lecture slidesLecture slides → GeoScratch').click())
+  await vi.waitFor(async () => {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
+    expect(host.querySelector('[data-saving-transition]')).toBeNull()
+  })
+  await submitAndFinishSave('Submit lecture answer')
+})
 it('clears old study storage and completes/export the active session entirely in memory', async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true
   localStorage.clear()
   useSettingsStore.getState().resetSettings()
+  useSettingsStore.getState().updateSetting('userStudyMode', true)
   localStorage.setItem('userstudyLi.interactions.old', 'old large records')
   const writes = vi.spyOn(Storage.prototype, 'setItem')
   vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:memory-study'), revokeObjectURL: vi.fn() })
@@ -75,9 +118,9 @@ it('clears old study storage and completes/export the active session entirely in
   await click('Finish demographics')
   await vi.waitFor(async () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
-    expect(host.textContent).toContain('Saved to Firebase')
+    expect(saveFirebaseStudyRecord).toHaveBeenCalledWith(expect.anything(), 'demographics', expect.anything())
   })
-  expect(host.textContent).toContain('Saved to Firebase')
+  expect(host.querySelector('.user-study-li-cloud-status')).toBeNull()
   expect(createFirebaseStudySession).toHaveBeenCalledWith(expect.objectContaining({ studyOrder: null }))
   expect(saveFirebaseStudyRecord).toHaveBeenCalledWith(expect.anything(), 'demographics', expect.objectContaining({
     responses: [{ id: 'age', answer: '25' }],
@@ -116,7 +159,7 @@ it('clears old study storage and completes/export the active session entirely in
     steps: { cube: { checkCount: 2, moreHelpCount: 1 }, point: { checkCount: 0, moreHelpCount: 0 } } })
   await vi.waitFor(async () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
-    expect(host.textContent).toContain('Saved to Firebase')
+    expect(saveFirebaseStudyRecord).toHaveBeenCalledWith(expect.anything(), 'post-study', expect.anything())
   })
   expect(createFirebaseStudySession).toHaveBeenCalled()
   const saved = new Map(saveFirebaseStudyRecord.mock.calls.map(([, stage, data]) => [stage, data]))
@@ -124,5 +167,5 @@ it('clears old study storage and completes/export the active session entirely in
     'geoscratch-trial', 'geoscratch-exercise-1', 'geoscratch-exercise-2', 'condition-2', 'post-study'].sort())
   expect(saved.get('geoscratch-trial').result).toEqual(trial)
   expect(saved.get('post-study').responses[0].answer).toBe('My post-study answer')
-  expect(host.textContent).toContain('Saved to Firebase')
+  expect(host.querySelector('.user-study-li-cloud-status')).toBeNull()
 })

@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 vi.mock('@/study/firebase/studyFirebase', () => ({ createFirebaseStudySession: vi.fn(async () => ({ path: ['test'] })), saveFirebaseStudyRecord: vi.fn(async () => {}) }))
-vi.mock('@/study/firebase/useFirebaseStudySync', () => ({ default: () => ({ state: 'idle', count: 0 }) }))
+vi.mock('@/study/firebase/useFirebaseStudySync', () => ({ default: vi.fn(() => ({ state: 'idle', count: 0 })) }))
 vi.mock('@/study/session/useStudyRecoveryBackup', () => ({ default: () => '' }))
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UserStudyLiPage from './UserStudyLiPage'
 import useSettingsStore from '@/store/useSettingsStore'
+import useFirebaseStudySync from '@/study/firebase/useFirebaseStudySync'
 import { strFromU8, unzipSync } from 'fflate'
 
 // Preserve coverage of the future persistent mode; current memory-only mode
@@ -46,9 +47,13 @@ function finishLectureSlides() {
   expect(host.querySelector('h1').textContent).toBe('Exercise 1: Rotate a cube and its corner point')
   expect(host.querySelector('#lecture-point-plane-title')).toBeNull()
   expect([...host.querySelectorAll('button')].some((button) => button.textContent === 'Continue to questionnaire')).toBe(false)
+  act(() => host.querySelector('input[value="A"]').click())
+  click('Submit')
   click('Next')
   expect(host.querySelector('h1').textContent).toBe('Exercise 2: Calculate the shortest distance from a point to a plane')
   expect(host.querySelector('#lecture-cube-title')).toBeNull()
+  act(() => host.querySelector('input[value="distance"]').click())
+  click('Submit')
   click('Continue to questionnaire')
 }
 
@@ -56,6 +61,7 @@ describe('Li study routes', () => {
   beforeEach(() => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true
     useSettingsStore.getState().resetSettings()
+    useSettingsStore.getState().updateSetting('userStudyMode', true)
     vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:study-data'), revokeObjectURL: vi.fn() })
     vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
     host = document.createElement('div')
@@ -71,6 +77,7 @@ describe('Li study routes', () => {
     window.localStorage.clear()
     delete globalThis.IS_REACT_ACT_ENVIRONMENT
     vi.restoreAllMocks()
+    useFirebaseStudySync.mockReturnValue({ state: 'idle', count: 0 })
     vi.unstubAllGlobals()
     vi.useRealTimers()
   })
@@ -84,7 +91,7 @@ describe('Li study routes', () => {
     click('Post-study GeoScratch Exercise first')
     expect(host.querySelector('h1').textContent).toBe('Study session complete')
     click('Start new session')
-    expect(host.querySelector('h1').textContent).toBe('New study session')
+    expect(host.textContent).toContain('Finish demographics')
   })
 
   it('times the three GeoScratch tasks at 5, 10, and 10 minutes and automatically advances to the questionnaire', () => {
@@ -120,7 +127,71 @@ describe('Li study routes', () => {
     expect(host.querySelector('.user-study-li-time-up')).toBeNull()
   })
 
+  it('gives each lecture exercise ten minutes, preserves drafts, and records automatic timeout navigation', () => {
+    vi.useFakeTimers()
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    const researchId = localStorage.getItem('userstudyLi.currentResearchId')
+    const timings = () => JSON.parse(localStorage.getItem(`userstudyLi.lectureExerciseTiming.${researchId}`))
+    expect(host.querySelector('[role="timer"]').textContent).toContain('10:00')
+    act(() => host.querySelector('input[value="B"]').click())
+    act(() => vi.advanceTimersByTime(599000))
+    expect(host.querySelector('h1').textContent).toContain('Exercise 1:')
+    expect(host.querySelector('[role="timer"]').textContent).toContain('0:01')
+    act(() => vi.advanceTimersByTime(1000))
+    expect(host.querySelector('h1').textContent).toContain('Exercise 2:')
+    expect(host.querySelector('[role="timer"]').textContent).toContain('10:00')
+    expect(timings()[0]).toMatchObject({ timedOut: true, completionReason: 'timeout', timeLimitSeconds: 600, durationMs: 600000 })
+    act(() => vi.advanceTimersByTime(600000))
+    expect(host.textContent).toContain('Lecture slides questionnaire First')
+    expect(host.querySelector('[role="timer"]')).toBeNull()
+    expect(timings()[1]).toMatchObject({ timedOut: true, completionReason: 'timeout', timeLimitSeconds: 600, durationMs: 600000 })
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    click('Post-study Lecture slides first')
+    const archive = JSON.parse(localStorage.getItem(`userstudyLi.sessionExport.${researchId}`))
+    const exercises = archive.files.filter((file) => file.data.type === 'exercise-answers')
+    expect(exercises.map((file) => file.data.timedOut)).toEqual([true, true])
+    expect(exercises[0].data.draftAnswer).toBe('B')
+    expect(exercises[0].data.submissions).toHaveLength(0)
+  })
+
+  it('requires a submitted answer for each lecture exercise, accepting incorrect submissions without marking a timeout', async () => {
+    vi.useFakeTimers()
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    const next = () => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Next')
+    expect(next().getAttribute('aria-disabled')).toBe('true')
+    expect(host.textContent).not.toContain('Submit an answer to continue.')
+    click('Next')
+    expect(host.textContent).toContain('Submit an answer to continue.')
+    act(() => host.querySelector('input[value="B"]').click())
+    expect(next().getAttribute('aria-disabled')).toBe('true')
+    await act(async () => click('Submit'))
+    expect(next().getAttribute('aria-disabled')).toBe('false')
+    expect(host.textContent).not.toContain('Submit an answer to continue.')
+    act(() => vi.advanceTimersByTime(120000))
+    click('Next')
+    const researchId = localStorage.getItem('userstudyLi.currentResearchId')
+    const timings = JSON.parse(localStorage.getItem(`userstudyLi.lectureExerciseTiming.${researchId}`))
+    expect(timings[0]).toMatchObject({ timedOut: false, completionReason: 'next', timeLimitSeconds: 600, durationMs: 120000 })
+    expect(host.querySelector('[role="timer"]').textContent).toContain('10:00')
+    const proceed = () => [...host.querySelectorAll('button')].find((button) => button.textContent === 'Continue to questionnaire')
+    expect(proceed().getAttribute('aria-disabled')).toBe('true')
+    expect(host.textContent).not.toContain('Submit an answer to continue.')
+    click('Continue to questionnaire')
+    expect(host.textContent).toContain('Submit an answer to continue.')
+    act(() => host.querySelector('input[value="dot-product"]').click())
+    expect(proceed().getAttribute('aria-disabled')).toBe('true')
+    await act(async () => click('Submit'))
+    expect(proceed().getAttribute('aria-disabled')).toBe('false')
+    click('Continue to questionnaire')
+    expect(host.textContent).toContain('Lecture slides questionnaire First')
+  })
+
   it('has no countdown and allows moving back when study mode is off', () => {
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', false))
     vi.useFakeTimers()
     click('Condition 1: GeoScratchGeoScratch → Lecture slides')
     click('Skip tutorial')
@@ -156,6 +227,7 @@ describe('Li study routes', () => {
   })
 
   it('checks only the submitted lecture answer and clears feedback when the choice changes', () => {
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', false))
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
     click('Next')
     const submit = [...host.querySelectorAll('button')].find((button) => button.textContent === 'Submit')
@@ -171,10 +243,11 @@ describe('Li study routes', () => {
     }
   })
 
-  it('provides only a description field for the cube exercise before Next', () => {
+  it('provides four matrix-product choices for the cube exercise before Next', () => {
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', false))
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
-    expect(host.querySelector('textarea')).toBeTruthy()
-    expect(host.querySelectorAll('input[type="radio"]')).toHaveLength(0)
+    expect(host.querySelector('textarea')).toBeNull()
+    expect(host.querySelectorAll('input[type="radio"]')).toHaveLength(4)
     expect(host.querySelector('.user-study-li-lecture-content [role="status"]')).toBeNull()
     click('Next')
     expect(host.querySelector('h1').textContent).toBe('Exercise 2: Calculate the shortest distance from a point to a plane')
@@ -182,30 +255,24 @@ describe('Li study routes', () => {
 
   it('saves lecture submissions with the session ID and exports answers with their interaction timeline', async () => {
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
-    const textarea = host.querySelector('textarea')
-    const answer = 'Translate (1, 1, 1), rotate Y 90°, translate (-1, -1, -1).'
-    act(() => {
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, answer)
-      textarea.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    click('Submit')
-    expect(host.querySelector('.user-study-li-lecture-content [role="status"]').textContent).toBe('Answer saved.')
+    const answer = 'A'
+    act(() => host.querySelector('input[value="A"]').click())
+    await act(async () => click('Submit'))
+    expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]').textContent).toBe('Answer saved.')
     let records = JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses'))
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({
-      exerciseId: 'cube-point-pivot-rotation', answer,
+      exerciseId: 'cube-point-pivot-rotation', answer, correct: true, answerFormat: 'multiple-choice',
       researchId: window.localStorage.getItem('userstudyLi.currentResearchId'),
       conditionId: 'lecture',
     })
     expect(Number.isNaN(Date.parse(records[0].submittedAt))).toBe(false)
-    click('Submit')
-    act(() => {
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'Revised answer: rotate about the origin.')
-      textarea.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    click('Submit')
+    await act(async () => click('Submit'))
+    act(() => host.querySelector('input[value="D"]').click())
+    await act(async () => click('Submit'))
     records = JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses'))
-    expect(records.map((record) => record.answer)).toEqual([answer, answer, 'Revised answer: rotate about the origin.'])
+    expect(records.map((record) => record.answer)).toEqual([answer, answer, 'D'])
+    expect(records[2]).toMatchObject({ correct: false, answerLabel: 'Rotate (Y, 90°) only' })
     click('Next')
     act(() => host.querySelector('input[value="distance"]').click())
     click('Submit')
@@ -216,11 +283,11 @@ describe('Li study routes', () => {
     click('Lecture slides questionnaire First')
     finishGeoScratch()
     click('GeoScratch Exercise questionnaire Second')
-    click('Post-study Lecture slides first')
+    await act(async () => click('Post-study Lecture slides first'))
     const createObjectURL = vi.fn(() => 'blob:study-archive')
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL: vi.fn() })
     const download = vi.spyOn(window.HTMLAnchorElement.prototype, 'click').mockImplementation(() => {}).mockClear()
-    click('Download study data (ZIP)')
+    await act(async () => click('Download study data (ZIP)'))
     expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob))
     expect(download).toHaveBeenCalledOnce()
     expect(download.mock.instances[0].download).toBe(`${window.localStorage.getItem('userstudyLi.currentResearchId')}.zip`)
@@ -236,12 +303,12 @@ describe('Li study routes', () => {
     expect(files).toHaveLength(9)
     const lecture = files.filter((file) => file.type === 'exercise-answers')
     expect(lecture.map((file) => file.submissions.length)).toEqual([3, 1])
-    expect(lecture[0].submissions.map((item) => item.answer)).toEqual([answer, answer, 'Revised answer: rotate about the origin.'])
+    expect(lecture[0].submissions.map((item) => item.answer)).toEqual([answer, answer, 'D'])
     expect(files.filter((file) => file.type === 'exercise-tracking').every((file) => !file.events && !file.tutorialEvents && !file.finalWorkspace)).toBe(true)
     expect(Object.keys(localStorage).some((key) => key.startsWith('userstudyLi.interactions.'))).toBe(false)
   })
 
-  it('records lecture start, submission latency, and completion duration independently for both exercises', () => {
+  it('records lecture start, submission latency, and completion duration independently for both exercises', async () => {
     let now = 1000
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
@@ -249,15 +316,11 @@ describe('Li study routes', () => {
     const readTiming = () => JSON.parse(window.localStorage.getItem(`userstudyLi.lectureExerciseTiming.${researchId}`))
     expect(readTiming()[0]).toMatchObject({ exerciseId: 'cube-point-pivot-rotation', completedAt: null, durationMs: null })
     expect(Number.isNaN(Date.parse(readTiming()[0].startedAt))).toBe(false)
-    const textarea = host.querySelector('textarea')
-    act(() => {
-      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'My answer')
-      textarea.dispatchEvent(new Event('input', { bubbles: true }))
-    })
+    act(() => host.querySelector('input[value="A"]').click())
     now += 5000
-    click('Submit')
+    await act(async () => click('Submit'))
     now += 4000
-    click('Submit')
+    await act(async () => click('Submit'))
     now += 1000
     click('Next')
     expect(readTiming()[0].durationMs).toBe(10000)
@@ -285,12 +348,8 @@ describe('Li study routes', () => {
     let now = 1000
     vi.spyOn(performance, 'now').mockImplementation(() => now)
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
-    const textarea = host.querySelector('textarea')
-    act(() => {
-      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(textarea, 'My saved-in-tab answer')
-      textarea.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    click('Submit')
+    act(() => host.querySelector('input[value="A"]').click())
+    await act(async () => click('Submit'))
     now += 5000
     click('Next')
     act(() => host.querySelector('input[value="distance"]').click())
@@ -303,7 +362,7 @@ describe('Li study routes', () => {
     expect(host.textContent).toContain('Post-study Lecture slides first')
     click('Post-study Lecture slides first')
     expect(host.querySelector('h1').textContent).toBe('Study session complete')
-    click('Download study data (ZIP)')
+    await act(async () => click('Download study data (ZIP)'))
     const blob = URL.createObjectURL.mock.calls.at(-1)[0]
     const bytes = await new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -313,12 +372,12 @@ describe('Li study routes', () => {
     })
     const files = Object.values(unzipSync(bytes)).map((value) => JSON.parse(strFromU8(value)))
     const lecture = files.filter((file) => file.type === 'exercise-answers')
-    expect(lecture[0].submissions[0].answer).toBe('My saved-in-tab answer')
+    expect(lecture[0].submissions[0]).toMatchObject({ answer: 'A', correct: true, answerFormat: 'multiple-choice' })
     expect(lecture[1].submissions[0].answer).toBe('distance')
     expect(lecture.map((file) => file.durationMs)).toEqual([5000, 3000])
   })
 
-  it('automatically exports the completed session once, including unsubmitted questionnaire drafts', () => {
+  it('automatically exports the completed session once, including unsubmitted questionnaire drafts', async () => {
     act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
     const researchId = window.localStorage.getItem('userstudyLi.currentResearchId')
     window.localStorage.setItem(`userstudyLi.questionnaireDrafts.${researchId}.demographics`, JSON.stringify({
@@ -330,7 +389,7 @@ describe('Li study routes', () => {
     finishGeoScratch()
     click('GeoScratch Exercise questionnaire Second')
     expect(URL.createObjectURL).not.toHaveBeenCalled()
-    click('Post-study Lecture slides first')
+    await act(async () => click('Post-study Lecture slides first'))
     expect(URL.createObjectURL).toHaveBeenCalledOnce()
     const saved = JSON.parse(window.localStorage.getItem(`userstudyLi.sessionExport.${researchId}`))
     expect(saved.files[0].data).toMatchObject({ status: 'not-submitted', responses: [{ id: 'gender', answer: 'Prefer not to say' }] })
@@ -339,7 +398,50 @@ describe('Li study routes', () => {
     expect(URL.createObjectURL).toHaveBeenCalledOnce()
   })
 
-  it('does not automatically download JSON with user study mode off but keeps manual export', () => {
+  it('starts fresh on one completion-page click without another download', async () => {
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    const oldId = window.localStorage.getItem('userstudyLi.currentResearchId')
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    finishLectureSlides()
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    await act(async () => click('Post-study Lecture slides first'))
+    expect(URL.createObjectURL).toHaveBeenCalledOnce()
+
+    await act(async () => click('Start new session'))
+    expect(host.textContent).toContain('Finish demographics')
+    expect(host.textContent).not.toContain('Study session complete')
+    const newId = window.localStorage.getItem('userstudyLi.currentResearchId')
+    expect(newId).toBeTruthy()
+    expect(newId).not.toBe(oldId)
+    expect(URL.createObjectURL).toHaveBeenCalledOnce()
+    click('Finish demographics')
+    expect(host.textContent).toContain('Choose the study order')
+  })
+
+  it('cancels an old automatic download still loading when the new session starts', async () => {
+    let finishRead
+    const readInteractions = vi.fn(() => new Promise((resolve) => { finishRead = resolve }))
+    useFirebaseStudySync.mockReturnValue({ state: 'saved', count: 9, readInteractions })
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
+    click('Condition 2: Lecture slidesLecture slides → GeoScratch')
+    finishLectureSlides()
+    click('Lecture slides questionnaire First')
+    finishGeoScratch()
+    click('GeoScratch Exercise questionnaire Second')
+    await act(async () => click('Post-study Lecture slides first'))
+    expect(readInteractions).toHaveBeenCalledOnce()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    await act(async () => click('Start new session'))
+    expect(host.textContent).toContain('Finish demographics')
+    await act(async () => finishRead([]))
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('Finish demographics')
+  })
+
+  it('does not record or offer any ZIP downloads with user study mode off', async () => {
+    act(() => useSettingsStore.getState().updateSetting('userStudyMode', false))
     expect(useSettingsStore.getState().settings.userStudyMode).toBe(false)
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
     finishLectureSlides()
@@ -348,12 +450,12 @@ describe('Li study routes', () => {
     click('GeoScratch Exercise questionnaire Second')
     click('Post-study Lecture slides first')
     expect(URL.createObjectURL).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem(`userstudyLi.sessionExport.${window.localStorage.getItem('userstudyLi.currentResearchId')}`)).toBeTruthy()
-    click('Download study data (ZIP)')
-    expect(URL.createObjectURL).toHaveBeenCalledOnce()
+    expect(window.localStorage.getItem(`userstudyLi.sessionExport.${window.localStorage.getItem('userstudyLi.currentResearchId')}`)).toBeNull()
+    expect(host.textContent).not.toContain('Download study data (ZIP)')
+    expect(window.localStorage.getItem('userstudyLi.lectureExerciseResponses')).toBeNull()
   })
 
-  it('still downloads the archive if the final local backup exceeds browser storage', () => {
+  it('still downloads the archive if the final local backup exceeds browser storage', async () => {
     act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')
     finishLectureSlides()
@@ -365,7 +467,7 @@ describe('Li study routes', () => {
       if (key.startsWith('userstudyLi.sessionExport.')) throw new Error('quota exceeded')
       return originalSetItem.call(this, key, value)
     })
-    click('Post-study Lecture slides first')
+    await act(async () => click('Post-study Lecture slides first'))
     expect(URL.createObjectURL).toHaveBeenCalledOnce()
     expect(host.querySelector('[role="alert"]').textContent).toContain('local session backup')
   })

@@ -9,7 +9,7 @@ export function firebaseSessionRecords(session) {
       ...questionnaireData(demographics),
     } }] : []
   }
-  return buildSessionFiles(session).files.flatMap(({ data }) => {
+  return buildSessionFiles({ ...session, interactionLog: undefined }).files.flatMap(({ data }) => {
     let stageId
     if (data.type === 'questionnaire') {
       if (data.status === 'missing') return []

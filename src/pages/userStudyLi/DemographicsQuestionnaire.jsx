@@ -195,11 +195,11 @@ function buildResponsePayload(answers, researchId) {
   }
 }
 
-export default function DemographicsQuestionnaire({ researchId, onComplete, onSave, storageWarning }) {
+export default function DemographicsQuestionnaire({ researchId, onComplete, onSave, storageWarning, recordResponses = true }) {
   const acceptResponses = true
-  const [answers, setAnswers] = useState(() => readQuestionnaireDraft(researchId, 'demographics')?.rawAnswers ?? makeInitialAnswers(researchId))
+  const [answers, setAnswers] = useState(() => (recordResponses && readQuestionnaireDraft(researchId, 'demographics')?.rawAnswers) || makeInitialAnswers(researchId))
   const [savedMessage, setSavedMessage] = useState('')
-  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId: 'demographics', answers, buildPayload: buildResponsePayload, enabled: acceptResponses })
+  const storageError = useQuestionnaireAutosave({ researchId, questionnaireId: 'demographics', answers, buildPayload: buildResponsePayload, enabled: acceptResponses && recordResponses })
 
   function updateAnswer(id, value) {
     setAnswers((current) => ({ ...current, [id]: value }))
@@ -211,8 +211,8 @@ export default function DemographicsQuestionnaire({ researchId, onComplete, onSa
     if (!acceptResponses) return
 
     const payload = buildResponsePayload(answers, researchId)
-    onSave(payload, 'demographics', DEMOGRAPHICS_RESPONSE_BACKUP_KEY)
-    setSavedMessage('Answers saved.')
+    if (recordResponses) onSave(payload, 'demographics', DEMOGRAPHICS_RESPONSE_BACKUP_KEY)
+    setSavedMessage(recordResponses ? 'Answers saved.' : 'Preview only. Answers are not recorded.')
     onComplete()
   }
 

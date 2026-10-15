@@ -3,11 +3,14 @@ import { useEffect, useRef, useState } from 'react'
 export default function ExerciseCountdown({ enabled, limitSeconds, onTimeout, startedAt }) {
   const [remaining, setRemaining] = useState(limitSeconds)
   const timeoutHandler = useRef(onTimeout)
+  const firedDeadline = useRef(null)
+  const fallbackStart = useRef(null)
   useEffect(() => { timeoutHandler.current = onTimeout }, [onTimeout])
   useEffect(() => {
     setRemaining(limitSeconds)
-    if (!enabled) return
-    const deadline = (startedAt ? Date.parse(startedAt) : Date.now()) + limitSeconds * 1000
+    if (!enabled) { fallbackStart.current = null; return }
+    fallbackStart.current ??= Date.now()
+    const deadline = (startedAt ? Date.parse(startedAt) : fallbackStart.current) + limitSeconds * 1000
     let expired = false
     const tick = () => {
       if (expired) return
@@ -15,7 +18,10 @@ export default function ExerciseCountdown({ enabled, limitSeconds, onTimeout, st
       setRemaining(seconds)
       if (seconds === 0) {
         expired = true
-        timeoutHandler.current()
+        if (firedDeadline.current !== deadline) {
+          firedDeadline.current = deadline
+          timeoutHandler.current()
+        }
       }
     }
     const interval = window.setInterval(tick, 1000)
