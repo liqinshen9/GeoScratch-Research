@@ -239,7 +239,9 @@ describe('Li study routes', () => {
       const result = host.querySelector('.user-study-li-lecture-content [role="status"]')
       expect(result.textContent).toBe(answer === 'distance' ? '✓' : '✗')
       expect(result.closest('label').querySelector('input').value).toBe(answer)
-      expect(host.querySelectorAll('.user-study-li-lecture-content [role="status"]').length).toBe(1)
+      expect(host.querySelectorAll('.user-study-li-lecture-content [role="status"]').length).toBe(2)
+      expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]').textContent)
+        .toBe(answer === 'distance' ? 'Correct' : 'Incorrect')
     }
   })
 
@@ -258,7 +260,7 @@ describe('Li study routes', () => {
     const answer = 'A'
     act(() => host.querySelector('input[value="A"]').click())
     await act(async () => click('Submit'))
-    expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]').textContent).toBe('Answer saved.')
+    expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]').textContent).toBe('Correct')
     let records = JSON.parse(window.localStorage.getItem('userstudyLi.lectureExerciseResponses'))
     expect(records).toHaveLength(1)
     expect(records[0]).toMatchObject({

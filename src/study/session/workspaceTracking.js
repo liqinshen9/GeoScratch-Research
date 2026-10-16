@@ -1,5 +1,6 @@
 import * as Blockly from 'blockly/core'
 import { emitStudyEvent, workspaceStudyContext } from './studyEvents'
+import { sampledScenePoints } from './sceneTracking'
 
 const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value))
 const coordinate = (value) => value ? { x: value.x, y: value.y } : null
@@ -9,6 +10,7 @@ export function workspaceSnapshot(workspace, customBlocks = []) {
     format: 'blockly-json', state: Blockly.serialization.workspaces.save(workspace),
     viewport: { scale: workspace.scale ?? 1, scrollX: workspace.scrollX ?? 0, scrollY: workspace.scrollY ?? 0 },
     customBlocks: customBlocks.map(({ id, name, xmlText, source }) => ({ id, name, xmlText, source })),
+    scenePoints: sampledScenePoints(workspace),
   }
 }
 
@@ -38,8 +40,34 @@ export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomB
   const types = new Map(workspace.getAllBlocks(false).map((block) => [block.id, block.type]))
   const emitEvent = (type, details) => { if (isEnabled()) emit(type, { workspaceId: workspace.id, ...details }, context) }
   const blockInfo = (id) => ({ blockId: id, blockType: workspace.getBlockById(id)?.type ?? types.get(id) ?? null })
+  const fields = new Map()
+  const intercepted = new Set()
+  const fieldKey = (blockId, name, oldValue, newValue) => JSON.stringify([blockId, name, oldValue, newValue])
+  function observeFields() {
+    for (const block of workspace.getAllBlocks(false)) {
+      for (const input of block.inputList) for (const field of input.fieldRow) {
+        if (!field.name || fields.has(field)) continue
+        const original = field.setValue
+        const observed = function (...args) {
+          const oldValue = clone(this.getValue())
+          const result = original.apply(this, args)
+          const newValue = clone(this.getValue())
+          if (!stopped && isEnabled() && Blockly.Events.isEnabled() && JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+            intercepted.add(fieldKey(block.id, field.name, oldValue, newValue))
+            emitEvent('block_field_change', { ...blockInfo(block.id), element: 'field', fieldName: field.name,
+              oldValue, newValue, captureSource: 'field-set-value' })
+            snapshot('after-change')
+          }
+          return result
+        }
+        fields.set(field, { original, observed })
+        field.setValue = observed
+      }
+    }
+  }
   function snapshot(reason) {
     if (!isEnabled()) return
+    observeFields()
     emitEvent('workspace_snapshot', { reason, snapshot: workspaceSnapshot(workspace, getCustomBlocks()) })
   }
   function settleDrag() {
@@ -99,6 +127,7 @@ export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomB
       emitEvent('block_delete', { ...details, blocks: (event.ids ?? [event.blockId]).map(blockInfo),
         state: clone(event.oldJson ?? json().oldJson), wasShadow: event.wasShadow })
     } else if (event.type === Blockly.Events.BLOCK_CHANGE) {
+      if (event.element === 'field' && intercepted.delete(fieldKey(event.blockId, event.name, event.oldValue, event.newValue))) return
       emitEvent(event.element === 'field' ? 'block_field_change' : 'block_change', {
         ...details, element: event.element, fieldName: event.name ?? null,
         oldValue: clone(event.oldValue), newValue: clone(event.newValue),
@@ -139,6 +168,8 @@ export function installWorkspaceStudyTracking(workspace, { runtimeId, getCustomB
       clearTimeout(initialTimer)
       clearTimeout(dragTimer)
       workspace.removeChangeListener(listener)
+      for (const [field, { original, observed }] of fields) if (field.setValue === observed) field.setValue = original
+      fields.clear()
       window.removeEventListener('pagehide', onPageHide)
       window.removeEventListener('geoscratch:request-workspace-snapshot', onSnapshotRequest)
       if (workspace.undo === trackedUndo) workspace.undo = originalUndo

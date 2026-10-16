@@ -6,6 +6,12 @@ import * as Blockly from 'blockly/core'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
 import useFirestoreInteractionTracking from './useFirestoreInteractionTracking'
 import { expandInteractionSnapshots } from '../session/interactionCodec'
+import { installWorkspaceStudyTracking } from '../session/workspaceTracking'
+
+Blockly.defineBlocksWithJsonArray([
+  { type: 'timeout_tracking_number', message0: 'value %1', args0: [{ type: 'field_number', name: 'VALUE', value: 0 }], output: 'Number' },
+  { type: 'timeout_tracking_parent', message0: 'input %1', args0: [{ type: 'input_value', name: 'INPUT' }] },
+])
 
 let root, host, workspace, tracking
 const context = { phase: 'geoscratch', conditionId: 'geoscratch', exerciseId: 'cube-point-pivot-rotation', studyOrder: 'lecture-first' }
@@ -25,6 +31,37 @@ afterEach(() => {
   useWorkspaceStore.getState().setWorkspace(null)
   vi.restoreAllMocks()
   delete globalThis.IS_REACT_ACT_ENVIRONMENT
+})
+it.each([false, true])('captures a timeout with the exact nested workspace, unfinished edits and passed=%s', async (passed) => {
+  const write = vi.fn(async () => {}), flushUploads = vi.fn(async () => true)
+  await act(async () => root.render(<Probe writeInteraction={write} flushUploads={flushUploads} />))
+  const observer = installWorkspaceStudyTracking(workspace, { runtimeId: 'userstudy-Li-DIRECT1-cube-point-pivot-rotation' })
+  try {
+    const parent = workspace.newBlock('timeout_tracking_parent')
+    const number = workspace.newBlock('timeout_tracking_number')
+    parent.getInput('INPUT').connection.connect(number.outputConnection)
+    observer.snapshot('initial')
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('geoscratch:exercise-evaluation', { detail: {
+        ...context, passed, correct: passed, steps: { rotate: passed }, feedback: { rotate: { message: passed ? 'Correct' : 'Use 90 degrees' } },
+      } }))
+      number.setFieldValue(90, 'VALUE')
+      tracking.capture('step_check', { stepKey: 'rotate' })
+      tracking.capture('exercise_timeout', { result: { passed, timedOut: true, completionReason: 'timeout' } })
+    })
+    await tracking.flush()
+    const events = write.mock.calls.map(([event]) => event)
+    const timeout = events.find((event) => event.type === 'exercise_timeout')
+    expect(timeout).toMatchObject({ outcome: passed ? 'passed' : 'failed', timedOut: true,
+      stepContext: { rotate: passed }, evaluation: { passed, correct: passed },
+      snapshot: { state: { blocks: { blocks: [expect.objectContaining({ inputs: {
+        INPUT: { block: expect.objectContaining({ fields: { VALUE: 90 } }) },
+      } })] } } },
+    })
+    expect(events.find((event) => event.type === 'step_check').outcome).toBe(passed ? 'passed' : 'failed')
+    expect(events.find((event) => event.type === 'block_field_change' && event.fieldName === 'VALUE')).toMatchObject({ oldValue: 0, newValue: 90 })
+    expect(flushUploads).toHaveBeenCalledWith(true)
+  } finally { observer.stop() }
 })
 it('passes events to the durable writer with step context and boundary snapshots', async () => {
   const store = vi.spyOn(Storage.prototype, 'setItem')

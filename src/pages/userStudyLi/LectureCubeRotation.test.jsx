@@ -32,12 +32,12 @@ it.each(['A', 'B', 'C', 'D'])('saves option %s with its label and correctness', 
     exerciseId: 'cube-point-pivot-rotation', answer, answerLabel,
     correct: answer === 'A', answerFormat: 'multiple-choice', submittedAt: expect.any(String),
   }))
-  expect(host.textContent).toContain('Answer saved.')
+  expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]').textContent).toBe(answer === 'A' ? 'Correct' : 'Incorrect')
   const feedback = option.closest('label').querySelector('.user-study-li-lecture-answer-result [role="status"]')
   expect(feedback.textContent).toBe(answer === 'A' ? '✓' : '✗')
   expect(feedback.getAttribute('aria-label')).toBe(answer === 'A' ? 'Correct answer' : 'Incorrect answer')
   act(() => host.querySelector(`input[value="${answer === 'A' ? 'B' : 'A'}"]`).click())
-  expect(host.textContent).not.toContain('Answer saved.')
+  expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]')).toBeNull()
   expect(host.querySelector('.user-study-li-lecture-answer-result [role="status"]')).toBeNull()
 })
 
@@ -65,15 +65,15 @@ it('restores a selected option but does not treat an older written draft as a va
   expect(host.querySelector('button').disabled).toBe(true)
 })
 
-it('confirms saving only after the submitted answer is acknowledged', async () => {
+it('shows correctness only after the submitted answer is accepted', async () => {
   let finishSave
   const onSubmitAnswer = vi.fn(() => new Promise((resolve) => { finishSave = resolve }))
   act(() => root.render(<LectureCubeRotation initialAnswer="A" onSubmitAnswer={onSubmitAnswer} />))
   await act(async () => host.querySelector('button').click())
-  expect(host.textContent).not.toContain('Answer saved.')
+  expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]')).toBeNull()
   await act(async () => finishSave(false))
-  expect(host.textContent).not.toContain('Answer saved.')
+  expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]')).toBeNull()
   await act(async () => host.querySelector('button').click())
   await act(async () => finishSave(true))
-  expect(host.textContent).toContain('Answer saved.')
+  expect(host.querySelector('.user-study-li-cube-answer-submit [role="status"]').textContent).toBe('Correct')
 })

@@ -10,6 +10,7 @@ import pointPlane from '@/exercises/exercise05-pointPlane'
 import { findLabelOwner } from '@/utils/scenePicking'
 import { getLabelsForObject, getLabelVisibilityKeysForObject } from '@/components/Scene3D/labels/labelData'
 import { BlockRegistry } from '../state/BlockRegistry'
+import { workspaceSnapshot } from '@/study/session/workspaceTracking'
 
 vi.mock('@/store/colorSystem', () => ({ forRole: () => '#3366cc', forInstance: () => '#3366cc',
   forInstanceVariant: () => '#3366cc', subscribeToPreset: () => () => {} }))
@@ -37,6 +38,23 @@ afterEach(() => {
 })
 
 describe('named saved constructions', () => {
+  it('captures exact sampled Q coordinates and a recipe that reproduces the scene', () => {
+    Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(pointPlane.solutionXml), workspace)
+    generateAndRun(workspace)
+    const q = workspace.getBlocksByType('geo_show_point_on_object', false)[0]
+    const snapshot = workspaceSnapshot(workspace)
+    const sample = snapshot.scenePoints.find((point) => point.blockId === q.id)
+    expect(sample.coordinates).toEqual(window.threeObjStore[q.id].userData.point.toArray())
+    expect(sample.recipe).toBeTruthy()
+    const restored = new Blockly.Workspace()
+    try {
+      Blockly.serialization.workspaces.load(snapshot.state, restored)
+      window.__geoScratchAnyPointCache = { [`${sample.blockId}:${sample.objectBlockId}`]: sample.recipe }
+      generateAndRun(restored)
+      expect(window.threeObjStore[q.id].userData.point.toArray()).toEqual(sample.coordinates)
+      expect(errors).not.toHaveBeenCalled()
+    } finally { restored.dispose() }
+  })
   it('reuses the displayed Q1 label when its rounded coordinates are copied into a manual vector', () => {
     Blockly.Xml.domToWorkspace(Blockly.utils.xml.textToDom(pointPlane.solutionXml), workspace)
     generateAndRun(workspace)

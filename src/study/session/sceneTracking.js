@@ -1,11 +1,22 @@
 import THREE from '@/utils/three'
 import { resolveSrcBlockId } from '@/utils/scenePicking'
 
+// Store precise samples and their recipe, independently of rounded 3D labels.
+export function sampledScenePoints(workspace) {
+  return (workspace?.getAllBlocks(false) ?? []).filter((block) => block.type === 'geo_show_point_on_object').flatMap((block) => {
+    const objectBlockId = block.getInputTargetBlock('OBJECT')?.id
+    const point = window.threeObjStore?.[block.id]?.userData?.point
+    const recipe = window.__geoScratchAnyPointCache?.[`${block.id}:${objectBlockId || 'none'}`]
+    return point?.isVector3 ? [{ blockId: block.id, objectBlockId, coordinates: point.toArray(), recipe: recipe ?? null }] : []
+  })
+}
+
 export function describeSceneHit(hit, getLabels = () => []) {
   if (!hit) return null
   let owner = hit.object
   for (let node = hit.object; node; node = node.parent) {
-    if (node.userData?.geoType || getLabels(node).length) { owner = node; break }
+    if (!owner.userData?.geoType && node.userData?.geoType) owner = node
+    if (getLabels(node).length || node.userData?.point?.isVector3) { owner = node; break }
   }
   const labels = getLabels(owner).map(({ name, value, text, anchor }) => ({
     ...(name != null ? { name } : {}), ...(value != null ? { value } : {}),

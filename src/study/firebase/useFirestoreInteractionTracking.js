@@ -58,7 +58,12 @@ export default function useFirestoreInteractionTracking({ researchId, context, w
         if (['block_create', 'block_delete', 'block_change', 'block_field_change', 'block_move'].includes(entry.type)) revisions.set(entry.exerciseId, (revisions.get(entry.exerciseId) ?? 0) + 1)
         if (entry.type === 'exercise_evaluation') evaluations.set(entry.exerciseId, entry)
         const evaluation = evaluations.get(entry.exerciseId)
+        const checkPassed = evaluation?.steps?.[entry.stepKey] === true && !evaluation?.feedback?.[entry.stepKey]?.incomplete
         const event = compactInteraction({ ...entry, schemaVersion: 3, workspaceRevision: revisions.get(entry.exerciseId) ?? 0, studyOrder: current.current?.studyOrder ?? null,
+          ...(entry.type === 'step_check' ? { outcome: evaluation ? (checkPassed ? 'passed' : 'failed') : 'unknown' } : {}),
+          ...(['exercise_timeout', 'exercise_finished'].includes(entry.type) ? {
+            outcome: entry.result?.passed ? 'passed' : 'failed', timedOut: entry.type === 'exercise_timeout',
+          } : {}),
           ...(['block_connect', 'connection_warning'].includes(entry.type) ? { connectionAccepted: entry.type === 'block_connect', connectionCorrectness: entry.type === 'block_connect' ? 'type-compatible' : 'rejected', solutionCorrectness: 'see-exercise-evaluation-at-this-revision' } : {}),
           stepContext: evaluation?.steps ?? {}, evaluation: evaluation ? {
             passed: evaluation.passed, correct: evaluation.correct, feedback: evaluation.feedback ?? {},

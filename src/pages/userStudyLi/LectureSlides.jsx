@@ -129,9 +129,14 @@ export default function LectureSlides({ onComplete, onSubmitAnswer, onExerciseCh
               </label>
             ))}
           </fieldset>
-          <button type="submit" className="user-study-li-primary-action" disabled={!selectedAnswer}>
-            Submit
-          </button>
+          <div className="user-study-li-cube-answer-submit">
+            <button type="submit" className="user-study-li-primary-action" disabled={!selectedAnswer}>
+              Submit
+            </button>
+            <span role={submittedAnswer ? 'status' : undefined}>
+              {submittedAnswer ? (submittedAnswer === 'distance' ? 'Correct' : 'Incorrect') : ''}
+            </span>
+          </div>
         </form>
       </section>
     </main>

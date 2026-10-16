@@ -26,7 +26,7 @@ function MatrixProduct({ matrices }) {
   </span>
 }
 
-export default function LectureCubeRotation({ onSubmitAnswer, initialAnswer = '', onDraftChange, recordResponses = true }) {
+export default function LectureCubeRotation({ onSubmitAnswer, initialAnswer = '', onDraftChange }) {
   const [answer, setAnswer] = useState(ANSWER_CHOICES.some((choice) => choice.id === initialAnswer) ? initialAnswer : '')
   const [saved, setSaved] = useState(false)
   return <section className="user-study-li-lecture-cube" aria-labelledby="lecture-cube-title">
@@ -84,7 +84,7 @@ export default function LectureCubeRotation({ onSubmitAnswer, initialAnswer = ''
           </fieldset>
           <div className="user-study-li-cube-answer-submit">
             <button type="submit" className="user-study-li-primary-action" disabled={!answer.trim()}>Submit</button>
-            <span role={saved ? 'status' : undefined}>{saved ? (recordResponses ? 'Answer saved.' : 'Answer checked. Recording is off.') : ''}</span>
+            <span role={saved ? 'status' : undefined}>{saved ? (answer === 'A' ? 'Correct' : 'Incorrect') : ''}</span>
           </div>
         </form>
       </div>

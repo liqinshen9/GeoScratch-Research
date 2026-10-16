@@ -28,7 +28,7 @@ import { getLabelVisibilityKeysForObject, getLabelsForObject } from './labels/la
 import { ZoomInvariantScaler, DashZoomSync, FatLineSync } from './sizing/GlyphSizing'
 import { computeNestingRenderOrders } from '@/utils/nestingRenderOrder'
 import { getObjectFocus } from '@/utils/sceneFocus'
-import { describeCamera } from '@/study/session/sceneTracking'
+import { describeCamera, sampledScenePoints } from '@/study/session/sceneTracking'
 import { emitStudyEvent } from '@/study/session/studyEvents'
 
 const DEFAULT_CAMERA_OFFSET = new THREE.Vector3(...DEFAULT_CAMERA_POSITION)
@@ -207,6 +207,15 @@ export default function Scene3D({
   // ready so the auto-frame effect below retries immediately instead of
   // waiting on the next unrelated block edit.
   const [refsReadyTick, setRefsReadyTick] = useState(0)
+  const recordedSamples = useRef('')
+  useEffect(() => {
+    const points = sampledScenePoints(useWorkspaceStore.getState().workspace)
+    const serialized = JSON.stringify(points)
+    if (serialized !== recordedSamples.current) {
+      recordedSamples.current = serialized
+      if (points.length) emitStudyEvent('scene_point_samples', { points })
+    }
+  }, [objects])
 
   const handleControlsReady = useCallback((instance) => {
     if (controlsRef.current === instance) return

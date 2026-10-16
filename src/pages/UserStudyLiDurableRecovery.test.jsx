@@ -3,12 +3,14 @@ import 'fake-indexeddb/auto'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
+import * as Blockly from 'blockly/core'
 import UserStudyLiPage from './UserStudyLiPage'
 import useSettingsStore from '@/store/useSettingsStore'
 import { readStudyBackup, saveStudyBackup, setActiveStudySession, pendingStudyUploads } from '@/study/session/studyRecoveryStore'
 import * as firebase from '@/study/firebase/studyFirebase'
 vi.mock('@/hooks/useThemeSync', () => ({ default: () => {} }))
-vi.mock('@/store/useWorkspaceStore', () => ({ default: { getState: () => ({ savedXml: {}, setUserBlockScope() {}, restoreStudyWorkspace() {} }) } }))
+const workspaceState = vi.hoisted(() => ({ workspace: null }))
+vi.mock('@/store/useWorkspaceStore', () => ({ default: { getState: () => ({ workspace: workspaceState.workspace, savedXml: {}, setUserBlockScope() {}, restoreStudyWorkspace() {} }) } }))
 vi.mock('@/pages/ExercisePage', () => ({ default: ({ exerciseId, exerciseTimer }) => <><h1>{exerciseId}</h1>{exerciseTimer}</> }))
 vi.mock('@/study/firebase/studyFirebase', () => ({
   createFirebaseStudySession: vi.fn(async ({ sessionId }) => ({ path: ['studyParticipants', 'owner', 'sessions', sessionId] })),
@@ -73,6 +75,34 @@ it('keeps the existing exercise deadline when restoring progress', async () => {
   await act(async () => root.render(<UserStudyLiPage />))
   await wait(() => expect(host.querySelector('[role="timer"]')?.textContent).toMatch(/Time remaining: [45]:/))
   expect(host.querySelector('h1').textContent).toBe('cube-point-pivot-rotation')
+})
+it('keeps the timed-out workspace and failed result locally while offline and advances only once', async () => {
+  vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+  Blockly.defineBlocksWithJsonArray([{ type: 'deadline_test_point', message0: 'x %1', args0: [{ type: 'field_number', name: 'X', value: 7 }] }])
+  const workspace = new Blockly.Workspace()
+  workspace.newBlock('deadline_test_point')
+  workspaceState.workspace = workspace
+  try {
+    await saveStudyBackup(id, { firebaseSessionId: 'timeout-session', snapshot: { researchId: id, phase: 'geoscratch', exerciseIndex: 1,
+      tutorialPhase: 'done', studyOrder: 'lecture-first', questionnaires: [], activeGeoResult: {
+        exerciseId: 'cube-point-pivot-rotation', startedAt: new Date(Date.now() - 11 * 60 * 1000).toISOString(),
+        passed: false, steps: { rotate: { checkCount: 1, moreHelpCount: 0 } },
+      } } })
+    await setActiveStudySession(id)
+    await act(async () => root.render(<UserStudyLiPage />))
+    await wait(() => expect(host.querySelector('h1').textContent).toBe('point-plane-distance'))
+    await wait(async () => {
+      const pending = await pendingStudyUploads(id)
+      const events = pending.filter((entry) => entry.kind === 'event').map((entry) => entry.data)
+      expect(events.filter((event) => event.type === 'exercise_timeout')).toHaveLength(1)
+      expect(events.find((event) => event.type === 'exercise_timeout')).toMatchObject({
+        exerciseId: 'cube-point-pivot-rotation', outcome: 'failed', timedOut: true,
+        result: { passed: false, timedOut: true, completionReason: 'timeout' },
+        snapshot: { state: { blocks: { blocks: [expect.objectContaining({ type: 'deadline_test_point', fields: { X: 7 } })] } } },
+      })
+    })
+    expect(firebase.saveFirebaseStudyInteraction).not.toHaveBeenCalled()
+  } finally { workspaceState.workspace = null; workspace.dispose() }
 })
 it('shows pending sessions and emergency export only after researcher authorization', async () => {
   await saveStudyBackup(id, { snapshot: { researchId: id, phase: 'post' }, uploadError: { code: 'resource-exhausted', message: 'Quota exceeded.' } })

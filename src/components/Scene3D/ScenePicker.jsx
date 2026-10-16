@@ -144,15 +144,15 @@ function ScenePicker({ onSelectBlock, onToggleLabels, toggleLabelsOnLeftClick = 
       onToggleLabels(getLabelVisibilityKeysForObject(owner))
     }
 
-    canvas.addEventListener('pointerdown', handlePointerDown)
-    window.addEventListener('pointermove', handlePointerMove)
-    window.addEventListener('pointerup', handlePointerUp)
+    canvas.addEventListener('pointerdown', handlePointerDown, true)
+    window.addEventListener('pointermove', handlePointerMove, true)
+    window.addEventListener('pointerup', handlePointerUp, true)
     window.addEventListener('pointercancel', handlePointerCancel)
     canvas.addEventListener('contextmenu', handleContextMenu)
     return () => {
-      canvas.removeEventListener('pointerdown', handlePointerDown)
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
+      canvas.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('pointermove', handlePointerMove, true)
+      window.removeEventListener('pointerup', handlePointerUp, true)
       window.removeEventListener('pointercancel', handlePointerCancel)
       canvas.removeEventListener('contextmenu', handleContextMenu)
     }

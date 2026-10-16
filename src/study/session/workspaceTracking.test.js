@@ -34,6 +34,21 @@ afterEach(() => {
 })
 
 describe('detailed Blockly study tracking', () => {
+  it('captures field values immediately even before queued Blockly events arrive, without duplicate edits', () => {
+    const rotation = workspace.newBlock('study_tracking_rotation')
+    const original = rotation.getField('DEGREES').setValue
+    flushEvents()
+    rotation.setFieldValue(90, 'DEGREES')
+    expect(eventsOf('block_field_change').filter((e) => e.fieldName === 'DEGREES')).toEqual([
+      expect.objectContaining({ oldValue: 30, newValue: 90, captureSource: 'field-set-value' }),
+    ])
+    tracking.snapshot('timeout')
+    expect(eventsOf('workspace_snapshot').at(-1).snapshot.state.blocks.blocks[0].fields.DEGREES).toBe(90)
+    flushEvents()
+    expect(eventsOf('block_field_change').filter((e) => e.fieldName === 'DEGREES')).toHaveLength(1)
+    tracking.stop()
+    expect(rotation.getField('DEGREES').setValue).toBe(original)
+  })
   it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('captures block edits and nested snapshots for %s', (exerciseId) => {
     const other = new Blockly.Workspace()
     const ignored = vi.fn(), getCustomBlocks = vi.fn()

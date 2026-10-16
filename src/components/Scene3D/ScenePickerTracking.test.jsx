@@ -40,6 +40,23 @@ afterEach(() => {
 })
 
 describe('3D picker study events', () => {
+  it('records semantic clicks even if a canvas control stops bubbling pointer events', () => {
+    const q = new THREE.Group()
+    q.userData = { geoType: 'exercise_point_q', srcBlockId: 'q-block', point: new THREE.Vector3(1, -2.5, 1) }
+    const marker = new THREE.Mesh()
+    marker.userData = { geoType: 'selectable_point_marker' }
+    q.add(marker)
+    vi.spyOn(THREE.Raycaster.prototype, 'intersectObjects').mockReturnValue([{ object: marker }])
+    const stop = (event) => event.stopPropagation()
+    canvas.addEventListener('pointerup', stop)
+    pointer(canvas, 'pointerdown')
+    pointer(canvas, 'pointerup')
+    expect(events.find((event) => event.type === 'scene_object_click').details.object).toMatchObject({
+      sourceBlockId: 'q-block', geoType: 'exercise_point_q', pointCoordinates: [1, -2.5, 1],
+    })
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    canvas.removeEventListener('pointerup', stop)
+  })
   it.each(['create-complex-object', 'cube-point-pivot-rotation', 'point-plane-distance'])('records 3D object clicks while preserving selection in %s', (exerciseId) => {
     window.__geoScratchRuntimeMode = `userstudy-Li-participant-${exerciseId}`
     const object = new THREE.Mesh()
