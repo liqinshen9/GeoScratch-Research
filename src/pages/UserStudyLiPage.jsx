@@ -24,6 +24,7 @@ import TutorialWelcome from './userStudyLi/TutorialWelcome'
 import SessionTutorial from './userStudyLi/SessionTutorial'
 import StudyOrderSelection from './userStudyLi/StudyOrderSelection'
 import ResearcherPendingUploads from './userStudyLi/ResearcherPendingUploads'
+import StudyUploadNotice from './userStudyLi/StudyUploadNotice'
 import LectureSlides from './userStudyLi/LectureSlides'
 import { nextStudyPhase, conditionDetails, studySequence } from './userStudyLi/studyFlow'
 import './UserStudyLiPage.css'
@@ -702,6 +703,8 @@ export default function UserStudyLiPage({ researcherOnly = false, autoResume = t
       <button type="button" disabled={previewIndex === previewSteps.length - 1} onClick={() => navigatePreview(1)}>Next preview step</button>
     </nav>}
     {transitionBusy && <div className="user-study-li-saving-overlay" role="status" data-saving-transition="true">Saving your results before continuing…</div>}
+    {userStudyMode && researchId && !recoveredReadOnly && <StudyUploadNotice researchId={researchId}
+      warning={firebaseSync.warning} state={firebaseSync.state} onRetry={firebaseSync.retry} />}
     {userStudyMode && researchId && !recoveredReadOnly && !transitionBusy && (interactionTracking.error || firebaseSync.state === 'local-error' || localBackupError || transitionError) && <div className="user-study-li-cloud-status is-form" role="alert">
       {firebaseSync.state === 'local-error' && <p>This device could not back up your results. Keep this tab open and contact the researcher.</p>}
       {localBackupError && <p role="alert">{localBackupError}</p>}

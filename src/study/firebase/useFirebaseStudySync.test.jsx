@@ -76,6 +76,52 @@ it('keeps the original session ID on refresh and restores pending records offlin
   expect((await readStudyBackup(id)).firebaseSessionId).toBe(sessionId)
   expect((await pendingStudyUploads(id)).some((entry) => entry.data.answer === 'offline answer')).toBe(true)
 })
+it('keeps authentication failure visible during retry and clears it only after acknowledgment', async () => {
+  await render()
+  firebase.saveFirebaseStudyRecord.mockRejectedValueOnce({ code: 'auth/network-request-failed', message: 'Network request failed.' })
+  await act(async () => sync.commit([{ stageId: 'post-study', data: { answer: 'Keep my response' } }], { phase: 'complete' }, null))
+  expect(sync.warning.code).toBe('auth/network-request-failed')
+  let finish
+  firebase.saveFirebaseStudyRecord.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  let retry
+  await act(async () => { retry = sync.retry(); await vi.waitFor(() => expect(finish).toBeTypeOf('function')) })
+  expect(sync.state).toBe('saving')
+  expect(sync.warning.code).toBe('auth/network-request-failed')
+  await act(async () => { finish(); await retry })
+  expect(sync.state).toBe('saved')
+  expect(sync.warning).toBeNull()
+  expect(await pendingStudyUploads(id)).toEqual([])
+})
+it('warns when initial Firebase authentication prevents session creation', async () => {
+  firebase.createFirebaseStudySession.mockRejectedValueOnce({ code: 'auth/network-request-failed', message: 'Authentication connection failed.' })
+  await render()
+  await act(async () => { await vi.waitFor(() => expect(sync.warning?.code).toBe('auth/network-request-failed')) })
+  expect((await readStudyBackup(id)).uploadError.code).toBe('auth/network-request-failed')
+  await act(async () => sync.retry())
+  expect(sync.warning).toBeNull()
+  expect(sync.state).toBe('saved')
+})
+it('warns immediately when the browser goes offline', async () => {
+  await render()
+  await act(async () => window.dispatchEvent(new Event('offline')))
+  expect(sync.warning.code).toBe('offline')
+  expect(sync.state).toBe('offline')
+})
+it('warns when an upload stalls and clears after the late acknowledgment', async () => {
+  await render()
+  const timers = vi.spyOn(window, 'setTimeout')
+  let finish
+  firebase.saveFirebaseStudyRecord.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }))
+  let operation
+  await act(async () => { operation = sync.commit([{ stageId: 'post-study', data: { answer: 'Slow connection' } }], { phase: 'complete' }, null) })
+  await act(async () => { await vi.waitFor(() => expect(finish).toBeTypeOf('function')) })
+  const timeout = timers.mock.calls.filter(([, delay]) => delay === 12000).at(-1)[0]
+  await act(async () => timeout())
+  expect(sync.warning.code).toBe('upload-unconfirmed')
+  expect((await pendingStudyUploads(id)).some(x => x.kind === 'record')).toBe(true)
+  await act(async () => { finish(); await operation })
+  expect(sync.warning).toBeNull()
+})
 it('does not write when recording is disabled and leaves the existing queue intact', async () => {
   await render()
   await render({ researchId: '' })

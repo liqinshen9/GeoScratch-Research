@@ -30,11 +30,21 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     await ensureLocal(id)
     const enabled = () => current.current.researchId === id
     if (enabled()) setStatus((previous) => ({ ...previous, state: 'saving' }))
-    const saved = await flushStudyUploads(id, { force, enabled })
-    const local = await readStudyBackup(id)
-    if (enabled()) setStatus({ state: saved ? 'saved' : navigator.onLine === false ? 'offline' : 'pending',
-      count: (current.current.records ?? []).length, ...local?.uploadError })
-    return saved
+    const timer = window.setTimeout(() => {
+      if (enabled()) setStatus((previous) => ({ ...previous, state: 'pending',
+        warning: { code: 'upload-unconfirmed', message: 'Firebase has not confirmed the upload after 12 seconds.' } }))
+    }, 12000)
+    try {
+      const saved = await flushStudyUploads(id, { force, enabled })
+      const local = await readStudyBackup(id)
+      if (enabled()) setStatus({ state: saved ? 'saved' : navigator.onLine === false ? 'offline' : 'pending',
+        count: (current.current.records ?? []).length, ...local?.uploadError,
+        warning: saved ? null : local?.uploadError ?? { code: navigator.onLine === false ? 'offline' : 'upload-unconfirmed' } })
+      return saved
+    } catch (error) {
+      if (enabled()) setStatus({ state: 'local-error', errorMessage: error.message })
+      throw error
+    } finally { window.clearTimeout(timer) }
   }, [ensureLocal])
   useEffect(() => {
     if (!researchId) { setStatus({ state: 'idle', count: 0 }); return }
@@ -53,9 +63,11 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     }
     void ensureLocal(researchId).then(() => retry()).catch((error) => setStatus({ state: 'local-error', errorMessage: error.message }))
     const reconnect = () => { void retry() }
+    const disconnected = () => setStatus((previous) => ({ ...previous, state: 'offline', warning: { code: 'offline' } }))
     window.addEventListener('online', reconnect)
+    window.addEventListener('offline', disconnected)
     const timer = window.setInterval(() => { void retry(true) }, 5 * 60 * 1000)
-    return () => { window.removeEventListener('online', reconnect); window.clearInterval(timer) }
+    return () => { window.removeEventListener('online', reconnect); window.removeEventListener('offline', disconnected); window.clearInterval(timer) }
   }, [researchId, ensureLocal, upload])
   const commit = useCallback(async (nextRecords, snapshot, order) => {
     const id = current.current.researchId

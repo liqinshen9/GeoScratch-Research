@@ -35,7 +35,7 @@ const wait = async (check) => vi.waitFor(async () => {
   await check()
 })
 const click = async (text) => act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === text).click())
-it.each(['offline', 'quota'])('recovers an edited questionnaire with the original ID and preserves Submit during %s failure', async (failure) => {
+it.each(['offline', 'quota', 'auth-network'])('recovers an edited questionnaire with the original ID and preserves Submit during %s failure', async (failure) => {
   const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
   await saveStudyBackup(id, { firebaseSessionId: 'same-session', snapshot: { researchId: id, phase: 'post', studyOrder: 'geoscratch-first', questionnaires: [] } })
   await setActiveStudySession(id)
@@ -54,9 +54,9 @@ it.each(['offline', 'quota'])('recovers an edited questionnaire with the origina
   expect(firebase.saveFirebaseStudyRecord).not.toHaveBeenCalled()
   expect(host.textContent).not.toContain('Emergency export')
   expect(host.textContent).not.toContain('Pending uploads')
-  if (failure === 'quota') {
+  if (failure !== 'offline') {
     online.mockReturnValue(true)
-    firebase.saveFirebaseStudyRecord.mockRejectedValue({ code: 'resource-exhausted', message: 'Quota exceeded.' })
+    firebase.saveFirebaseStudyRecord.mockRejectedValue({ code: failure === 'quota' ? 'resource-exhausted' : 'auth/network-request-failed', message: 'Test upload failure.' })
   }
   await click('Submit session')
   await wait(() => expect(host.querySelector('h1')?.textContent).toBe('Study session complete'))
@@ -64,6 +64,15 @@ it.each(['offline', 'quota'])('recovers an edited questionnaire with the origina
   const pending = await pendingStudyUploads(id)
   expect(pending.find((entry) => entry.id === 'post-study').data.responses.some((response) => response.answer === 'My half-finished response')).toBe(true)
   expect((await readStudyBackup(id)).snapshot.phase).toBe('complete')
+  expect(host.textContent).toContain(`Firebase upload not confirmed · ${id}`)
+  expect(host.textContent).toContain('Retry Firebase upload')
+  if (failure !== 'offline') {
+    expect(host.textContent).toContain(failure === 'quota' ? 'resource-exhausted' : 'auth/network-request-failed')
+    firebase.saveFirebaseStudyRecord.mockResolvedValue(undefined)
+    await click('Retry Firebase upload')
+    await wait(() => expect(host.textContent).not.toContain('Firebase upload not confirmed'))
+    expect(await pendingStudyUploads(id)).toEqual([])
+  }
 })
 it('keeps the existing exercise deadline when restoring progress', async () => {
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)

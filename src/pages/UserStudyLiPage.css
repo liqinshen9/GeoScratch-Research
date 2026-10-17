@@ -683,6 +683,7 @@
   font-size: 0.875rem;
 }
 .user-study-li-cloud-status.is-error { border-color: #dc2626; }
+.user-study-li-upload-warning { z-index: 2100; border-width: 2px; background: var(--geo-bg, #fff); box-shadow: 0 4px 20px rgb(0 0 0 / 18%); }
 .user-study-li-cloud-status { pointer-events: none; }
 .user-study-li-cloud-status.is-form { left: 1rem; right: auto; }
 .user-study-li-cloud-status button { margin-left: 0.75rem; text-decoration: underline; pointer-events: auto; }

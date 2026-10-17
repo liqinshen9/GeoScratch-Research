@@ -152,9 +152,15 @@ are included for unused steps. `passed` records the checker state when leaving,
 Development-mode results include `studyMode: false` and may be unpassed. Revisiting
 an exercise replaces its result with the latest visit. No tutorial clicks are saved.
 
-Background saves run without a persistent status banner. Next and answer submission
-show a temporary saving overlay until the upload is acknowledged. Failed or offline
-saves and backup errors remain visible, with Retry for failed uploads. The
+Acknowledged background saves stay quiet. In user study mode, a persistent
+**Firebase upload not confirmed** warning shows the research ID when an upload
+fails (including authentication, permissions, or quota errors), the browser goes
+offline, or acknowledgment takes longer than 12 seconds. It includes **Retry
+Firebase upload**, stays visible during retries, and clears only after Firebase
+acknowledges the upload. Reconnecting alone does not clear it. A durable browser
+backup still permits study progression while cloud uploads remain unconfirmed;
+keep the original tab and browser data until recovery succeeds. Local backup
+errors have a separate warning. Developer preview does not show upload warnings. The
 latest acknowledged record for each stage is recoverable from Firebase. A new session
 cannot be started from the completion screen while uploads are pending or failed.
 ZIP downloads retrieve event history from Firestore; nested JSON histories are included
