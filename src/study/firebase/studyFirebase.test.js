@@ -139,7 +139,7 @@ describe('Firebase study setup', () => {
   })
   it('preserves the participant label without rewriting it for each recovery save', async () => {
     const { createFirebaseStudySession, saveFirebaseStudyRecovery } = await import('./studyFirebase')
-    firebase.getDoc.mockResolvedValueOnce({ exists: () => true })
+    firebase.getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ researchId: 'RECENT' }) })
     const session = await createFirebaseStudySession({ researchId: 'RECENT', sessionId: 'existing-session' })
     expect(firebase.setDoc).toHaveBeenCalledTimes(1)
     await saveFirebaseStudyRecovery(session, { researchId: 'RECENT', phase: 'complete' })
@@ -149,5 +149,12 @@ describe('Firebase study setup', () => {
     })
     firebase.auth.currentUser = { uid: 'participant-b' }
     await expect(saveFirebaseStudyRecovery(session, { researchId: 'RECENT' })).rejects.toThrow('different participant')
+  })
+  it('refuses to reuse a session path belonging to a different research ID without writing anything', async () => {
+    const { createFirebaseStudySession } = await import('./studyFirebase')
+    firebase.getDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ researchId: 'ORIGINAL' }) })
+    await expect(createFirebaseStudySession({ researchId: 'DIFFERENT', sessionId: 'same-session' })).rejects.toThrow('different research ID')
+    expect(firebase.setDoc).not.toHaveBeenCalled()
+    expect(firebase.updateDoc).not.toHaveBeenCalled()
   })
 })

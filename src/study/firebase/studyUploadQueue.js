@@ -1,6 +1,6 @@
 import { createFirebaseStudySession, updateFirebaseStudyOrder, saveFirebaseStudyRecord,
   saveFirebaseStudyRecovery, saveFirebaseStudyInteraction } from './studyFirebase'
-import { acknowledgeStudyUpload, enqueueStudyUpload, pendingStudyUploads, readStudyBackup, saveStudyBackup, sealInteractionChunk } from '../session/studyRecoveryStore'
+import { acknowledgeStudyUpload, enqueueStudyUpload, pendingStudyUploads, readStudyBackup, saveStudyBackup, sealInteractionChunk, finishStudyUpload } from '../session/studyRecoveryStore'
 import { encodeInteractionChunk } from '../session/interactionCodec'
 
 const running = new Map()
@@ -9,9 +9,9 @@ export function flushStudyUploads(researchId, { force = false, enabled = () => t
   if (running.has(researchId)) {
     const active = running.get(researchId)
     return force ? active.then(async () => {
-      if (!enabled() || delays.has(researchId)) return false
+      if (!enabled()) return false
       return (await pendingStudyUploads(researchId)).length
-        ? flushStudyUploads(researchId, { enabled }) : true
+        ? flushStudyUploads(researchId, { force: true, enabled }) : true
     }) : active
   }
   if (!force && (delays.get(researchId)?.until ?? 0) > Date.now()) return Promise.resolve(false)
@@ -98,9 +98,7 @@ async function upload(researchId, enabled) {
       allAcknowledged: remaining.every((entry) => entry.key === recovery.key && entry.version === recovery.version) }
     if (!enabled()) return false
     await saveFirebaseStudyRecovery(remote, { ...recovery.data, uploadStatus }, recovery.version)
-    await acknowledgeStudyUpload(recovery)
+    await acknowledgeStudyUpload(recovery, { uploadStatus })
   }
-  const remaining = await pendingStudyUploads(researchId)
-  await saveStudyBackup(researchId, { fullyUploaded: remaining.length === 0, uploadError: null })
-  return remaining.length === 0
+  return finishStudyUpload(researchId)
 }

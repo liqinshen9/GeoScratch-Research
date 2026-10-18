@@ -80,10 +80,10 @@ workspace, counters, and timer deadline. Only an intentional new session generat
 a new ID. Participants have no research-ID lookup or researcher sign-in controls.
 
 Questionnaire Next, lecture Next/Continue, study-order selection, and exercise Next
-wait for Firebase acknowledgment of the stage records and checkpoint before
-advancing. GeoScratch Next also waits for outstanding interaction writes.
-If offline or the save is unconfirmed after 12 seconds, the page stays on its
-current stage, preserves the answers, and asks the participant to retry Next.
+first commit results to the browser backup and attempt to upload the stage records
+and checkpoint. GeoScratch Next also waits for outstanding local interaction writes.
+If offline or the upload is unconfirmed after 12 seconds, a durable local save
+permits progression while the warning remains visible and cloud retries continue.
 Countdown expiry still follows the required automatic timeout navigation, with
 its final workspace captured synchronously before advancing and sent to Firestore.
 
@@ -156,13 +156,31 @@ Acknowledged background saves stay quiet. In user study mode, a persistent
 **Firebase upload not confirmed** warning shows the research ID when an upload
 fails (including authentication, permissions, or quota errors), the browser goes
 offline, or acknowledgment takes longer than 12 seconds. It includes **Retry
-Firebase upload**, stays visible during retries, and clears only after Firebase
-acknowledges the upload. Reconnecting alone does not clear it. A durable browser
+Firebase upload**, lists the specific pending questionnaires/results, interaction
+event counts per exercise, and checkpoint, and explains the error category and
+Firebase error code/message. Quota, network, access, configuration, and rejected-data
+errors are distinguished. The warning stays visible during retries and clears only after Firebase
+acknowledges the attempted upload. New interactions buffered during a successful
+upload do not trigger a warning or keep an old warning visible. Reconnecting
+alone does not clear it. Automatic recovery checks run every 15 seconds, respecting
+the upload queue's backoff (including a longer wait for quota errors). Ordinary
+exercise edits remain buffered until an upload boundary, but completed sessions
+automatically drain any trailing events. A durable browser
 backup still permits study progression while cloud uploads remain unconfirmed;
 keep the original tab and browser data until recovery succeeds. Local backup
 errors have a separate warning. Developer preview does not show upload warnings. The
-latest acknowledged record for each stage is recoverable from Firebase. A new session
-cannot be started from the completion screen while uploads are pending or failed.
+latest acknowledged record for each stage is recoverable from Firebase. Study
+completion and starting another session are allowed after a durable browser save,
+even if cloud retries fail; the failed study remains backed up under its original ID.
+The completion screen explicitly distinguishes pending uploads from **All study
+data uploaded to Firebase**; its completion flag is checked against the local
+queue in one transaction to avoid racing with newly recorded events.
+After study completion, the browser backup is removed automatically only if the
+final cloud checkpoint was acknowledged as complete and the local queue is empty.
+Cleanup is scoped to that research ID and preserves other participants, pending
+uploads, Firebase login, settings, and unrelated workspaces. The backup writer is
+stopped during cleanup so it cannot recreate the deleted data. If confirmation or
+cleanup is uncertain, the backup is retained. Downloads remain available from Firebase.
 ZIP downloads retrieve event history from Firestore; nested JSON histories are included
 in each corresponding GeoScratch exercise file, while Firebase summary documents stay compact.
 An internet connection is required for history downloads. Draft questionnaires

@@ -53,7 +53,11 @@ export async function createFirebaseStudySession({ researchId, studyOrder = null
   const { db, uid } = await connectStudyFirebase()
   const path = ['studyParticipants', uid, 'sessions', sessionId]
   const reference = doc(db, ...path)
-  if (!(await getDoc(reference)).exists()) {
+  const existing = await getDoc(reference)
+  if (existing.exists() && existing.data().researchId !== researchId) {
+    throw new Error('This Firebase session belongs to a different research ID. Keep this browser open and contact the researcher.')
+  }
+  if (!existing.exists()) {
     await setDoc(reference, { researchId, studyOrder, schemaVersion: 1, createdAt: serverTimestamp() })
   }
   await saveParticipantSummary(db, uid, sessionId, researchId)

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { clearSavedStudyStorage, inspectStudyStorage } from '../../../public/study-storage.js'
+import { clearSessionLocalStorage } from './studyStorage'
 
 function makeStorage(values) {
   const items = new Map(Object.entries(values))
@@ -8,6 +9,22 @@ function makeStorage(values) {
     removeItem: (key) => items.delete(key) }
 }
 describe('explicit saved study cleanup', () => {
+  it('cleans only one confirmed participant while preserving another participant and settings', () => {
+    const storage = makeStorage({
+      'userstudyLi.questionnaireDrafts.DONE.post-study': '{}', 'userstudyLi.questionnaireDrafts.FAILED.post-study': '{}',
+      'userstudyLi.currentResearchId': 'FAILED',
+      'userstudyLi.postStudyResponses': JSON.stringify([{ researchId: 'DONE' }, { researchId: 'FAILED' }]),
+      'geoscratch:user-settings': '{"userStudyMode":true}',
+      'geoscratch:workspace-xml': JSON.stringify({ 'userstudy-Li-DONE-trial': 'remove', 'userstudy-Li-FAILED-trial': 'keep', sandbox: 'keep' }),
+    })
+    clearSessionLocalStorage('DONE', storage)
+    expect(storage.getItem('userstudyLi.questionnaireDrafts.DONE.post-study')).toBeNull()
+    expect(storage.getItem('userstudyLi.questionnaireDrafts.FAILED.post-study')).toBe('{}')
+    expect(storage.getItem('userstudyLi.currentResearchId')).toBe('FAILED')
+    expect(JSON.parse(storage.getItem('userstudyLi.postStudyResponses'))).toEqual([{ researchId: 'FAILED' }])
+    expect(JSON.parse(storage.getItem('geoscratch:workspace-xml'))).toEqual({ 'userstudy-Li-FAILED-trial': 'keep', sandbox: 'keep' })
+    expect(storage.getItem('geoscratch:user-settings')).toBe('{"userStudyMode":true}')
+  })
   it('clears all prior sessions while retaining settings and unrelated workspaces', () => {
     const storage = makeStorage({
       'userstudyLi.interactions.3CGHXK.stream.0': '[1]',

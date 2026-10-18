@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import useWorkspaceStore from '@/store/useWorkspaceStore'
 import { saveStudyBackup } from './studyRecoveryStore'
 
-export default function useStudyRecoveryBackup(snapshot) {
+export default function useStudyRecoveryBackup(snapshot, { enabled = true } = {}) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState('')
   const json = JSON.stringify(snapshot)
   useEffect(() => {
-    if (!snapshot.researchId) return
+    if (!snapshot.researchId || !enabled) return
     let closed = false
     const save = () => {
       setPending(true)
@@ -30,6 +30,6 @@ export default function useStudyRecoveryBackup(snapshot) {
     return () => { closed = true; unsubscribe?.() }
   // The serialized snapshot is the stable dependency; exclude new object identities.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [json])
+  }, [json, enabled])
   return { error, pending }
 }

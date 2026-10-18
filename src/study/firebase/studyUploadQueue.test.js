@@ -76,3 +76,70 @@ it('updates the completeness receipt when trailing events arrive after a boundar
   expect(await flushStudyUploads(id, { force: true })).toBe(true)
   expect(firebase.saveFirebaseStudyRecovery.mock.calls.at(-1)[1].uploadStatus.uploadedEventCount).toBe(2)
 })
+it('keeps a newer questionnaire answer queued while an older answer is uploading, then saves the newer answer', async () => {
+  await enqueueStudyUpload(id, 'record', 'post-study', { researchId: id, answer: 'older response' })
+  let finish
+  firebase.saveFirebaseStudyRecord.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const first = flushStudyUploads(id, { force: true })
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  await enqueueStudyUpload(id, 'record', 'post-study', { researchId: id, answer: 'newer response' })
+  finish()
+  expect(await first).toBe(false)
+  expect((await pendingStudyUploads(id)).find(e => e.id === 'post-study').data.answer).toBe('newer response')
+  expect(await flushStudyUploads(id, { force: true })).toBe(true)
+  expect(firebase.saveFirebaseStudyRecord.mock.calls.map(([, , data]) => data.answer)).toEqual(['older response', 'newer response'])
+  expect(await pendingStudyUploads(id)).toEqual([])
+})
+it('saves the same stage and event IDs for different participants under separate sessions during concurrent uploads', async () => {
+  const other = crypto.randomUUID()
+  await saveStudyBackup(other, { firebaseSessionId: `session-${other}`, snapshot: { researchId: other, phase: 'post' } })
+  for (const researchId of [id, other]) {
+    await enqueueStudyUpload(researchId, 'record', 'post-study', { researchId, answer: `response-${researchId}` })
+    await event(1, researchId)
+  }
+  expect(await Promise.all([flushStudyUploads(id, { force: true }), flushStudyUploads(other, { force: true })])).toEqual([true, true])
+  expect(firebase.saveFirebaseStudyRecord).toHaveBeenCalledTimes(2)
+  for (const [session, stage, data] of firebase.saveFirebaseStudyRecord.mock.calls) {
+    expect(stage).toBe('post-study')
+    expect(session.path.at(-1)).toBe(`session-${data.researchId}`)
+    expect(data.answer).toBe(`response-${data.researchId}`)
+  }
+  expect(new Set(firebase.saveFirebaseStudyRecord.mock.calls.map(([session]) => session.path.join('/'))).size).toBe(2)
+  for (const [session, chunk] of firebase.saveFirebaseStudyInteraction.mock.calls) {
+    expect(session.path.at(-1)).toBe(`session-${chunk.researchId}`)
+    expect(decodeInteractionChunk(chunk).every(e => e.researchId === chunk.researchId)).toBe(true)
+  }
+  expect(await pendingStudyUploads(id)).toEqual([])
+  expect(await pendingStudyUploads(other)).toEqual([])
+})
+it('serializes overlapping retries for the same session and retains events added during upload', async () => {
+  await event(1)
+  let finish
+  firebase.saveFirebaseStudyInteraction.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const first = flushStudyUploads(id, { force: true })
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+  await event(2)
+  const retry = flushStudyUploads(id, { force: true })
+  finish()
+  await Promise.all([first, retry])
+  const chunks = firebase.saveFirebaseStudyInteraction.mock.calls.map(([, chunk]) => chunk)
+  expect(chunks).toHaveLength(2)
+  expect(new Set(chunks.map(c => c.eventId)).size).toBe(2)
+  expect(chunks.flatMap(decodeInteractionChunk).map(e => e.eventId)).toEqual(['e-1', 'e-2'])
+  expect(await pendingStudyUploads(id)).toEqual([])
+})
+it('honours a Retry requested during an upload that subsequently fails', async () => {
+  await event(1)
+  let fail
+  firebase.saveFirebaseStudyInteraction.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+  const first = flushStudyUploads(id, { force: true })
+  await vi.waitFor(() => expect(fail).toBeTypeOf('function'))
+  const retry = flushStudyUploads(id, { force: true })
+  fail({ code: 'auth/network-request-failed', message: 'Temporary interruption' })
+  expect(await first).toBe(false)
+  expect(await retry).toBe(true)
+  expect(firebase.saveFirebaseStudyInteraction).toHaveBeenCalledTimes(2)
+  expect(firebase.saveFirebaseStudyInteraction.mock.calls[0][1]).toEqual(firebase.saveFirebaseStudyInteraction.mock.calls[1][1])
+  expect(await pendingStudyUploads(id)).toEqual([])
+  expect((await readStudyBackup(id)).uploadError).toBeNull()
+})

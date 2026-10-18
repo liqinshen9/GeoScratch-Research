@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { readFirebaseStudyInteractions } from './studyFirebase'
 import { flushStudyUploads } from './studyUploadQueue'
-import { enqueueStudyUpload, listStudyBackups, pendingStudyUploads, readStudyBackup, saveStudyBackup, waitForStudyWrites } from '../session/studyRecoveryStore'
+import { enqueueStudyUpload, listStudyBackups, pendingStudyUploads, readStudyBackup, saveStudyBackup, waitForStudyWrites, deleteConfirmedStudyBackup } from '../session/studyRecoveryStore'
 import { decodeInteractionChunk, expandInteractionSnapshots } from '../session/interactionCodec'
+import { pendingUploadDetails } from './pendingUploadDetails'
+import { clearSessionLocalStorage } from '../session/studyStorage'
 
 export default function useFirebaseStudySync({ researchId, studyOrder, records, initialSession }) {
   const current = useRef({})
   current.current = { researchId, studyOrder, records }
   const identities = useRef(new Map())
   const recorded = useRef(new Map())
+  const uploadedSessions = useRef(new Map())
   const [status, setStatus] = useState({ state: 'idle', count: 0 })
   const ensureLocal = useCallback(async (id) => {
     let identity = identities.current.get(id)
@@ -24,6 +27,17 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     }
     await identity
   }, [initialSession])
+  const clearCompletedBackup = useCallback(async (researchId = current.current.researchId) => {
+    if (!researchId) return false
+    await waitForStudyWrites(researchId)
+    const local = await readStudyBackup(researchId)
+    if (local?.snapshot?.phase !== 'complete' || !local.fullyUploaded || local.uploadError
+      || local.lastAcknowledgedRecovery?.phase !== 'complete' || !local.lastAcknowledgedRecovery.allAcknowledged
+      || !local.firebaseSession?.path) return false
+    uploadedSessions.current.set(researchId, local.firebaseSession)
+    clearSessionLocalStorage(researchId)
+    return deleteConfirmedStudyBackup(researchId)
+  }, [])
   const upload = useCallback(async (force = false) => {
     const id = current.current.researchId
     if (!id) return false
@@ -33,14 +47,24 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     const timer = window.setTimeout(() => {
       if (enabled()) setStatus((previous) => ({ ...previous, state: 'pending',
         warning: { code: 'upload-unconfirmed', message: 'Firebase has not confirmed the upload after 12 seconds.' } }))
+      void Promise.all([pendingStudyUploads(id), readStudyBackup(id)]).then(([entries, local]) => {
+        if (enabled()) setStatus(previous => ({ ...previous, pendingItems: pendingUploadDetails(entries, Boolean(local?.firebaseSession?.path)) }))
+      }).catch(() => {})
     }, 12000)
     try {
       const saved = await flushStudyUploads(id, { force, enabled })
       const local = await readStudyBackup(id)
-      if (enabled()) setStatus({ state: saved ? 'saved' : navigator.onLine === false ? 'offline' : 'pending',
+      const pending = await pendingStudyUploads(id)
+      const complete = saved && local?.fullyUploaded === true && pending.length === 0
+      // A flush takes a bounded queue snapshot. New actions can remain buffered
+      // after Firebase acknowledges that batch; they are not an upload failure.
+      const offline = !complete && navigator.onLine === false
+      const warning = complete ? null : local?.uploadError ?? (offline ? { code: 'offline' } : null)
+      if (enabled()) setStatus({ state: complete ? 'saved' : offline ? 'offline' : warning ? 'pending' : 'buffered',
         count: (current.current.records ?? []).length, ...local?.uploadError,
-        warning: saved ? null : local?.uploadError ?? { code: navigator.onLine === false ? 'offline' : 'upload-unconfirmed' } })
-      return saved
+        warning, pendingItems: pendingUploadDetails(pending, Boolean(local?.firebaseSession?.path)),
+        receiptVersion: local?.lastAcknowledgedRecovery?.version })
+      return complete
     } catch (error) {
       if (enabled()) setStatus({ state: 'local-error', errorMessage: error.message })
       throw error
@@ -54,10 +78,15 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
           if (!current.current.researchId) break
           const pending = await pendingStudyUploads(session.researchId)
           // Ordinary edits stay local until a deliberate upload boundary.
-          // The slow timer only revisits failed/incomplete upload attempts.
-          if (failedOnly && !session.uploadError && !pending.some((entry) => entry.kind !== 'event')) continue
+          // Retry failures and drain every trailing event once a study finishes.
+          // Ordinary exercise edits still wait for an upload boundary.
+          if (failedOnly && !session.uploadError && !pending.some((entry) => entry.kind !== 'event')
+            && !(session.snapshot?.phase === 'complete' && pending.length)) continue
           if (session.researchId === current.current.researchId) await upload()
-          else if (pending.length) await flushStudyUploads(session.researchId, { enabled: () => Boolean(current.current.researchId) })
+          else if (pending.length) {
+            const saved = await flushStudyUploads(session.researchId, { enabled: () => Boolean(current.current.researchId) })
+            if (saved) await clearCompletedBackup(session.researchId)
+          }
         }
       } catch (error) { setStatus({ state: 'local-error', errorMessage: error.message }) }
     }
@@ -66,9 +95,9 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     const disconnected = () => setStatus((previous) => ({ ...previous, state: 'offline', warning: { code: 'offline' } }))
     window.addEventListener('online', reconnect)
     window.addEventListener('offline', disconnected)
-    const timer = window.setInterval(() => { void retry(true) }, 5 * 60 * 1000)
+    const timer = window.setInterval(() => { void retry(true) }, 15000)
     return () => { window.removeEventListener('online', reconnect); window.removeEventListener('offline', disconnected); window.clearInterval(timer) }
-  }, [researchId, ensureLocal, upload])
+  }, [researchId, ensureLocal, upload, clearCompletedBackup])
   const commit = useCallback(async (nextRecords, snapshot, order) => {
     const id = current.current.researchId
     if (!id) return false
@@ -84,10 +113,16 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     }
     await enqueueStudyUpload(id, 'recovery', 'current', { ...snapshot, researchId: id, studyOrder: order ?? snapshot.studyOrder })
     let timer
+    let saved = false
     try {
-      await Promise.race([upload(true), new Promise((resolve) => { timer = window.setTimeout(resolve, 12000) })])
+      saved = await Promise.race([upload(true), new Promise((resolve) => { timer = window.setTimeout(() => resolve(false), 12000) })])
     } finally { window.clearTimeout(timer) }
-    // A durable local commit permits progress even if the cloud is unavailable.
+    if (!saved && current.current.researchId === id) {
+      const [entries, local] = await Promise.all([pendingStudyUploads(id), readStudyBackup(id)])
+      setStatus(previous => ({ ...previous, pendingItems: pendingUploadDetails(entries, Boolean(local?.firebaseSession?.path)),
+        warning: previous.warning ?? { code: 'upload-unconfirmed' } }))
+    }
+    // Progress is safe after the durable local commit, even if cloud retry fails.
     return true
   }, [ensureLocal, upload])
   const writeInteraction = useCallback(async (event) => {
@@ -95,6 +130,8 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     if (!id || event.researchId !== id) return
     await ensureLocal(id)
     await enqueueStudyUpload(id, 'event', event.eventId, event)
+    if (current.current.researchId === id) setStatus((previous) => previous.state === 'saved'
+      ? { ...previous, state: 'buffered' } : previous)
   }, [ensureLocal])
   const readInteractions = useCallback(async () => {
     const id = current.current.researchId
@@ -103,10 +140,11 @@ export default function useFirebaseStudySync({ researchId, studyOrder, records, 
     const events = pending.flatMap((entry) => entry.kind === 'event' ? [entry.data]
       : entry.kind === 'chunk' ? decodeInteractionChunk(entry.data) : [])
     let uploaded = []
-    if (local?.firebaseSession?.path) uploaded = await readFirebaseStudyInteractions(local.firebaseSession)
+    const remote = local?.firebaseSession ?? uploadedSessions.current.get(id)
+    if (remote?.path) uploaded = await readFirebaseStudyInteractions(remote)
     const merged = [...new Map([...uploaded, ...events].map((event) => [event.eventId, event])).values()]
       .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.sequence - b.sequence)
     return expandInteractionSnapshots(merged)
   }, [])
-  return { ...status, retry: () => upload(true), flush: upload, commit, writeInteraction, readInteractions }
+  return { ...status, retry: () => upload(true), flush: upload, commit, writeInteraction, readInteractions, clearCompletedBackup }
 }

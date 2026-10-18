@@ -83,6 +83,7 @@ describe('Li study routes', () => {
   })
 
   it('completes GeoScratch then lecture slides with a questionnaire after each', () => {
+    useFirebaseStudySync.mockReturnValue({ state: 'saved', count: 9 })
     click('Condition 1: GeoScratchGeoScratch → Lecture slides')
     finishGeoScratch()
     click('GeoScratch Exercise questionnaire First')
@@ -90,6 +91,7 @@ describe('Li study routes', () => {
     click('Lecture slides questionnaire Second')
     click('Post-study GeoScratch Exercise first')
     expect(host.querySelector('h1').textContent).toBe('Study session complete')
+    expect(host.textContent).toContain('All study data uploaded to Firebase.')
     click('Start new session')
     expect(host.textContent).toContain('Finish demographics')
   })
@@ -401,6 +403,7 @@ describe('Li study routes', () => {
   })
 
   it('starts fresh on one completion-page click without another download', async () => {
+    useFirebaseStudySync.mockReturnValue({ state: 'saved', count: 9 })
     act(() => useSettingsStore.getState().updateSetting('userStudyMode', true))
     const oldId = window.localStorage.getItem('userstudyLi.currentResearchId')
     click('Condition 2: Lecture slidesLecture slides → GeoScratch')

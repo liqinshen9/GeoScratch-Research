@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { expect, it } from 'vitest'
 import { saveStudyBackup, readStudyBackup, enqueueStudyUpload, pendingStudyUploads, acknowledgeStudyUpload,
-  saveQuestionnaireBackup, setActiveStudySession, readActiveStudySession, sealInteractionChunk } from './studyRecoveryStore'
+  saveQuestionnaireBackup, setActiveStudySession, readActiveStudySession, sealInteractionChunk, finishStudyUpload, deleteConfirmedStudyBackup } from './studyRecoveryStore'
 it('persists answers, nested workspaces, and the same session identity across recovery', async () => {
   await Promise.all([
     saveStudyBackup('RECOVERY1', { snapshot: { phase: 'demographics', answers: { age: '25' }, workspace: { nested: [1, 2] } } }),
@@ -42,4 +42,44 @@ it('cannot seal an overlapping second-tab chunk after the first tab claimed thos
   expect(await sealInteractionChunk('TABS', entries, chunk)).toBe(true)
   expect(await sealInteractionChunk('TABS', entries, { ...chunk, eventCount: 99 })).toBe(false)
   expect((await pendingStudyUploads('TABS'))[0].data.eventCount).toBe(1)
+})
+it('invalidates upload completion when new data arrives and only marks an empty queue complete', async () => {
+  const id = 'COMPLETION-RACE'
+  await saveStudyBackup(id, { fullyUploaded: true })
+  await enqueueStudyUpload(id, 'record', 'post-study', { answer: 'pending' })
+  expect((await readStudyBackup(id)).fullyUploaded).toBe(false)
+  expect(await finishStudyUpload(id)).toBe(false)
+  await acknowledgeStudyUpload((await pendingStudyUploads(id))[0])
+  const finish = finishStudyUpload(id)
+  const newEvent = enqueueStudyUpload(id, 'event', 'later', { eventId: 'later' })
+  await Promise.all([finish, newEvent])
+  expect((await readStudyBackup(id)).fullyUploaded).toBe(false)
+  expect(await pendingStudyUploads(id)).toHaveLength(1)
+})
+it('removes only a completed confirmed study, retaining failed studies and a different active participant', async () => {
+  const id = 'CLEAN-SUCCESS', other = 'KEEP-FAILED'
+  const confirmed = { snapshot: { phase: 'complete' }, firebaseSession: { path: ['studyParticipants', 'owner', 'sessions', 'one'] },
+    fullyUploaded: true, lastAcknowledgedRecovery: { phase: 'complete', allAcknowledged: true, version: 'receipt' } }
+  await saveStudyBackup(id, confirmed)
+  await saveStudyBackup(other, { ...confirmed, fullyUploaded: false, uploadError: { code: 'resource-exhausted' } })
+  await setActiveStudySession(other)
+  expect(await deleteConfirmedStudyBackup(other)).toBe(false)
+  expect(await deleteConfirmedStudyBackup(id)).toBe(true)
+  expect(await readStudyBackup(id)).toBeNull()
+  expect((await readActiveStudySession()).researchId).toBe(other)
+  expect((await readStudyBackup(other)).uploadError.code).toBe('resource-exhausted')
+})
+it('refuses cleanup without final acknowledgment or with a pending upload, then removes the matching active pointer', async () => {
+  const id = 'CLEAN-GUARDS'
+  await saveStudyBackup(id, { snapshot: { phase: 'complete' }, fullyUploaded: true,
+    firebaseSession: { path: ['studyParticipants', 'owner', 'sessions', 'guard'] } })
+  expect(await deleteConfirmedStudyBackup(id)).toBe(false)
+  await saveStudyBackup(id, { lastAcknowledgedRecovery: { phase: 'complete', allAcknowledged: true } })
+  await enqueueStudyUpload(id, 'event', 'late', { eventId: 'late' })
+  await saveStudyBackup(id, { fullyUploaded: true })
+  expect(await deleteConfirmedStudyBackup(id)).toBe(false)
+  await acknowledgeStudyUpload((await pendingStudyUploads(id))[0])
+  await setActiveStudySession(id)
+  expect(await deleteConfirmedStudyBackup(id)).toBe(true)
+  expect(await readActiveStudySession()).toBeNull()
 })

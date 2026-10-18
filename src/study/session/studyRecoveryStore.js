@@ -107,7 +107,28 @@ export function enqueueStudyUpload(researchId, kind, id, data) {
     entry.compressedData = encodeInteractionChunk([entry.data])
     delete entry.data
   }
-  return trackStudyWrite(researchId, transaction(['uploads'], (tx) => tx.objectStore('uploads').put(entry)))
+  return trackStudyWrite(researchId, transaction(['uploads', 'sessions'], (tx) => {
+    tx.objectStore('uploads').put(entry)
+    const sessions = tx.objectStore('sessions'), request = sessions.get(researchId)
+    request.onsuccess = () => {
+      if (request.result) sessions.put({ ...request.result, fullyUploaded: false })
+    }
+  }))
+}
+// Read the queue and update its completion flag in one transaction, so an edit
+// arriving during upload cannot be marked uploaded by an older queue snapshot.
+export function finishStudyUpload(researchId) {
+  return transaction(['uploads', 'sessions'], (tx, result) => {
+    const request = tx.objectStore('uploads').index('researchId').count(researchId)
+    request.onsuccess = () => {
+      const complete = request.result === 0
+      const sessions = tx.objectStore('sessions'), session = sessions.get(researchId)
+      session.onsuccess = () => {
+        if (session.result) sessions.put({ ...session.result, fullyUploaded: complete, uploadError: null, updatedAt: new Date().toISOString() })
+        result(complete)
+      }
+    }
+  })
 }
 export async function pendingStudyUploads(researchId) {
   return transaction(['uploads'], (tx, result) => {
@@ -143,7 +164,7 @@ export async function sealInteractionChunk(researchId, entries, chunk) {
     }
   })
 }
-export function acknowledgeStudyUpload(entry) {
+export function acknowledgeStudyUpload(entry, { uploadStatus } = {}) {
   return transaction(['uploads', 'sessions'], (tx) => {
     const store = tx.objectStore('uploads'), request = store.get(entry.key)
     request.onsuccess = () => {
@@ -153,6 +174,35 @@ export function acknowledgeStudyUpload(entry) {
         const sessions = tx.objectStore('sessions'), session = sessions.get(entry.researchId)
         session.onsuccess = () => sessions.put({ ...session.result, researchId: entry.researchId,
           uploadedChunks: { ...session.result?.uploadedChunks, [entry.id]: entry.data.eventCount } })
+      }
+      if (entry.kind === 'recovery') {
+        const sessions = tx.objectStore('sessions'), session = sessions.get(entry.researchId)
+        session.onsuccess = () => sessions.put({ ...session.result, researchId: entry.researchId,
+          lastAcknowledgedRecovery: { phase: entry.data.phase, version: entry.version,
+            allAcknowledged: uploadStatus?.allAcknowledged === true } })
+      }
+    }
+  })
+}
+// Cleanup is scoped to one completed study and refuses to run unless the final
+// cloud checkpoint was acknowledged and no newer upload exists in this browser.
+export function deleteConfirmedStudyBackup(researchId) {
+  return transaction(['sessions', 'uploads'], (tx, result) => {
+    const sessions = tx.objectStore('sessions'), request = sessions.get(researchId)
+    request.onsuccess = () => {
+      const session = unpackSession(request.result)
+      if (!session?.fullyUploaded || session.uploadError || session.snapshot?.phase !== 'complete'
+        || session.lastAcknowledgedRecovery?.phase !== 'complete' || !session.lastAcknowledgedRecovery.allAcknowledged
+        || !session.firebaseSession?.path) { result(false); return }
+      const pending = tx.objectStore('uploads').index('researchId').count(researchId)
+      pending.onsuccess = () => {
+        if (pending.result) { result(false); return }
+        sessions.delete(researchId)
+        const active = sessions.get('__active__')
+        active.onsuccess = () => {
+          if (active.result?.activeResearchId === researchId) sessions.delete('__active__')
+          result(true)
+        }
       }
     }
   })

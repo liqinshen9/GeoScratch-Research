@@ -35,7 +35,7 @@ const wait = async (check) => vi.waitFor(async () => {
   await check()
 })
 const click = async (text) => act(async () => [...host.querySelectorAll('button')].find((button) => button.textContent === text).click())
-it.each(['offline', 'quota', 'auth-network'])('recovers an edited questionnaire with the original ID and preserves Submit during %s failure', async (failure) => {
+it.each(['offline', 'quota', 'auth-network'])('finishes with a retained browser backup and lists pending data and cause during %s failure', async (failure) => {
   const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
   await saveStudyBackup(id, { firebaseSessionId: 'same-session', snapshot: { researchId: id, phase: 'post', studyOrder: 'geoscratch-first', questionnaires: [] } })
   await setActiveStudySession(id)
@@ -66,12 +66,22 @@ it.each(['offline', 'quota', 'auth-network'])('recovers an edited questionnaire 
   expect((await readStudyBackup(id)).snapshot.phase).toBe('complete')
   expect(host.textContent).toContain(`Firebase upload not confirmed · ${id}`)
   expect(host.textContent).toContain('Retry Firebase upload')
+  expect(host.textContent).toContain('Not yet uploaded:')
+  expect(host.querySelector('.user-study-li-upload-warning').textContent).toContain('Post-study questionnaire')
+  expect(host.querySelector('.user-study-li-upload-warning').textContent).toContain('Study progress checkpoint')
+  expect(host.textContent).toContain('Your browser backup is retained')
+  expect([...host.querySelectorAll('button')].find(b => b.textContent === 'Start new session').disabled).toBe(false)
+  expect(host.textContent).toContain(failure === 'quota' ? 'Quota:' : 'Network:')
   if (failure !== 'offline') {
     expect(host.textContent).toContain(failure === 'quota' ? 'resource-exhausted' : 'auth/network-request-failed')
     firebase.saveFirebaseStudyRecord.mockResolvedValue(undefined)
     await click('Retry Firebase upload')
     await wait(() => expect(host.textContent).not.toContain('Firebase upload not confirmed'))
     expect(await pendingStudyUploads(id)).toEqual([])
+    await wait(() => expect(host.textContent).toContain('All study data uploaded to Firebase.'))
+    await wait(() => expect(host.textContent).toContain('Uploaded study backup removed from this browser.'))
+    expect(await readStudyBackup(id)).toBeNull()
+    expect([...host.querySelectorAll('button')].find(b => b.textContent === 'Start new session').disabled).toBe(false)
   }
 })
 it('keeps the existing exercise deadline when restoring progress', async () => {
